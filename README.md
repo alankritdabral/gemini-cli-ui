@@ -2,7 +2,7 @@
 
 Gemini CLI UI is a VS Code extension that brings the power of the [Gemini CLI](https://github.com/google/gemini-cli) directly into your editor. It provides a real PTY-backed terminal experience within a dedicated sidebar chat or a full editor panel.
 
-![Gemini CLI UI](media/gemini-light.svg)
+![Gemini CLI UI](media/gemini-cli-ui.jpg)
 
 ## Features
 
