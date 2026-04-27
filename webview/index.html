@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src {{cspSource}} https: data:; style-src {{cspSource}} 'unsafe-inline'; font-src {{cspSource}}; script-src 'nonce-{{nonce}}';"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link nonce="{{nonce}}" rel="stylesheet" href="{{xtermCssUri}}" />
+    <link nonce="{{nonce}}" rel="stylesheet" href="{{stylesUri}}" />
+    <title>Gemini CLI UI</title>
+  </head>
+  <body>
+    <main class="terminal-shell">
+      <div class="toolbar" role="toolbar" aria-label="Gemini CLI controls">
+        <div class="status">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="statusText">Starting Gemini CLI</span>
+        </div>
+        <button id="restartButton" type="button" title="Restart Gemini CLI">Restart</button>
+      </div>
+      <div id="terminal" class="terminal" aria-label="Gemini CLI"></div>
+    </main>
+    <script nonce="{{nonce}}" src="{{xtermJsUri}}"></script>
+    <script nonce="{{nonce}}" src="{{fitAddonJsUri}}"></script>
+    <script nonce="{{nonce}}" src="{{webLinksAddonJsUri}}"></script>
+    <script nonce="{{nonce}}" src="{{mainJsUri}}"></script>
+  </body>
+</html>

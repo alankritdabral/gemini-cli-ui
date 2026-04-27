@@ -1,0 +1,67 @@
+{
+  "name": "gemini-cli-ui",
+  "displayName": "Gemini CLI UI",
+  "description": "Run the Gemini CLI in a real PTY-backed xterm.js terminal inside VS Code.",
+  "version": "0.1.0",
+  "publisher": "local-dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alankritdabral/gemini-cli-ui.git"
+  },
+  "bugs": {
+    "url": "https://github.com/alankritdabral/gemini-cli-ui/issues"
+  },
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "gemini-chat",
+          "title": "Gemini",
+          "icon": "media/gemini-light.svg"
+        }
+      ]
+    },
+    "views": {
+      "gemini-chat": [
+        {
+          "type": "webview",
+          "id": "gemini.chatView",
+          "name": "Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "geminiTerminal.open",
+        "title": "Open Gemini CLI UI",
+        "category": "Gemini"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "check": "tsc --noEmit -p ./"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-web-links": "^0.11.0",
+    "@xterm/xterm": "^5.5.0",
+    "node-pty": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.5.4"
+  }
+}
