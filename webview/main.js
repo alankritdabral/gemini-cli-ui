@@ -34,18 +34,30 @@
   terminal.open(terminalElement);
   terminal.focus();
 
+  // Ensure terminal stays focused when clicked
+  terminalElement.addEventListener("mousedown", () => {
+    setTimeout(() => terminal.focus(), 0);
+  });
+
   terminal.onData((data) => {
     vscode.postMessage({ type: "input", data });
   });
 
-  // Handle paste events explicitly in the webview
-  window.addEventListener("paste", (event) => {
-    const data = event.clipboardData?.getData("text");
+  // Handle paste events explicitly in the webview.
+  // We use both the terminal element and document to ensure we catch the event.
+  // We preventDefault to let the PTY handle the input and echo it back,
+  // avoiding duplicate characters if xterm.js also tries to handle it.
+  const handlePaste = (event) => {
+    const data = (event.clipboardData || window.clipboardData)?.getData("text");
     if (data) {
-      // Use terminal.onData's logic to send input to the extension
       vscode.postMessage({ type: "input", data });
     }
-  });
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  terminalElement.addEventListener("paste", handlePaste, true);
+  document.addEventListener("paste", handlePaste, true);
 
   terminal.onResize(({ cols, rows }) => {
     vscode.postMessage({ type: "resize", cols, rows });
