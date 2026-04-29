@@ -104,7 +104,7 @@ export function getShellLaunchCommand(): { file: string; args: string[] } {
         "-ExecutionPolicy",
         "Bypass",
         "-Command",
-        "if (Get-Command gemini -ErrorAction SilentlyContinue) { gemini } else { npx -y @google/gemini-cli }"
+        "$ErrorActionPreference = 'SilentlyContinue'; if (Get-Command gemini) { gemini --resume latest 2>$null; if ($LASTEXITCODE -ne 0) { gemini } } else { npx -y @google/gemini-cli --resume latest 2>$null; if ($LASTEXITCODE -ne 0) { npx -y @google/gemini-cli } }"
       ]
     };
   }
@@ -122,9 +122,10 @@ export function getShellLaunchCommand(): { file: string; args: string[] } {
         "  nvm use --silent default >/dev/null 2>&1 || nvm use --silent node >/dev/null 2>&1 || true",
         "fi",
         "if command -v gemini >/dev/null 2>&1; then",
-        "  exec gemini",
-        "fi",
-        "exec npx -y @google/gemini-cli"
+        "  gemini --resume latest 2>/dev/null || gemini",
+        "else",
+        "  npx -y @google/gemini-cli --resume latest 2>/dev/null || npx -y @google/gemini-cli",
+        "fi"
       ].join("\n")
     ]
   };

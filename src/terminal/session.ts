@@ -178,7 +178,8 @@ export class GeminiTerminalSession {
       ).toString(),
       "{{mainJsUri}}": webview.asWebviewUri(
         vscode.Uri.joinPath(this.extensionUri, "webview", "main.js")
-      ).toString()
+      ).toString(),
+      "{{platform}}": process.platform
     };
 
     let html = fs.readFileSync(templatePath, "utf8");

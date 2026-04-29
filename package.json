@@ -3,7 +3,7 @@
   "displayName": "Gemini CLI UI",
   "icon": "media/gemini-cli-ui.jpg",
   "description": "Run the Gemini CLI in a real PTY-backed xterm.js terminal inside VS Code.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "AlankritDabral",
   "repository": {
     "type": "git",
@@ -63,6 +63,7 @@
   "devDependencies": {
     "@types/node": "^20.14.10",
     "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.9.1",
     "typescript": "^5.5.4"
   }
 }

@@ -18,6 +18,13 @@ export function activate(context: vscode.ExtensionContext) {
       activeSessions.add(panel);
       panel.onDidDispose(() => activeSessions.delete(panel));
     }),
+    vscode.window.registerWebviewPanelSerializer("geminiTerminal", {
+      async deserializeWebviewPanel(webviewPanel: vscode.WebviewPanel) {
+        const panel = new GeminiTerminalPanel(context.extensionUri, webviewPanel);
+        activeSessions.add(panel);
+        panel.onDidDispose(() => activeSessions.delete(panel));
+      }
+    }),
     {
       dispose: () => {
         for (const session of activeSessions) {

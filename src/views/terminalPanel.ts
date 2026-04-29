@@ -8,20 +8,32 @@ export class GeminiTerminalPanel {
 
   readonly onDidDispose = this.disposeEmitter.event;
 
-  constructor(private readonly extensionUri: vscode.Uri) {
-    this.panel = vscode.window.createWebviewPanel(
-      "geminiTerminal",
-      "Gemini CLI UI",
-      vscode.ViewColumn.Active,
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true,
-        localResourceRoots: [
-          vscode.Uri.joinPath(extensionUri, "webview"),
-          vscode.Uri.joinPath(extensionUri, "node_modules", "@xterm")
-        ]
-      }
-    );
+  constructor(private readonly extensionUri: vscode.Uri, panel?: vscode.WebviewPanel) {
+    if (panel) {
+      this.panel = panel;
+    } else {
+      this.panel = vscode.window.createWebviewPanel(
+        "geminiTerminal",
+        "Gemini CLI UI",
+        vscode.ViewColumn.Active,
+        {
+          enableScripts: true,
+          retainContextWhenHidden: true,
+          localResourceRoots: [
+            vscode.Uri.joinPath(extensionUri, "webview"),
+            vscode.Uri.joinPath(extensionUri, "node_modules", "@xterm")
+          ]
+        }
+      );
+    }
+
+    this.panel.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [
+        vscode.Uri.joinPath(extensionUri, "webview"),
+        vscode.Uri.joinPath(extensionUri, "node_modules", "@xterm")
+      ]
+    };
 
     this.panel.iconPath = {
       light: vscode.Uri.joinPath(extensionUri, "media", "gemini-light.svg"),

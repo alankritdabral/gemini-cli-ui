@@ -4,6 +4,8 @@
   const statusText = document.getElementById("statusText");
   const restartButton = document.getElementById("restartButton");
 
+  const platform = document.body.getAttribute("data-platform");
+
   const terminal = new Terminal({
     allowProposedApi: false,
     cursorBlink: true,
@@ -18,7 +20,10 @@
       foreground: "#d6deeb",
       cursor: "#ffffff",
       selectionBackground: "#264f78"
-    }
+    },
+    // On Windows, ConPTY handles its own reflow/wrapping. 
+    // Telling xterm.js we're on Windows helps avoid duplication/ghosting.
+    ...(platform === "win32" ? { windowsPty: { backend: "conpty" } } : {})
   });
 
   const fitAddon = new FitAddon.FitAddon();
@@ -31,6 +36,15 @@
 
   terminal.onData((data) => {
     vscode.postMessage({ type: "input", data });
+  });
+
+  // Handle paste events explicitly in the webview
+  window.addEventListener("paste", (event) => {
+    const data = event.clipboardData?.getData("text");
+    if (data) {
+      // Use terminal.onData's logic to send input to the extension
+      vscode.postMessage({ type: "input", data });
+    }
   });
 
   terminal.onResize(({ cols, rows }) => {
@@ -63,12 +77,20 @@
     }
   });
 
-  const resizeObserver = new ResizeObserver(() => {
-    fitToContainer();
-  });
+  let resizeTimeout;
+  const debouncedFit = () => {
+    if (resizeTimeout) {
+      clearTimeout(resizeTimeout);
+    }
+    resizeTimeout = setTimeout(() => {
+      fitToContainer();
+      resizeTimeout = undefined;
+    }, 100);
+  };
 
+  const resizeObserver = new ResizeObserver(debouncedFit);
   resizeObserver.observe(terminalElement);
-  window.addEventListener("resize", fitToContainer);
+  window.addEventListener("resize", debouncedFit);
 
   requestAnimationFrame(() => {
     fitToContainer();
@@ -76,6 +98,10 @@
   });
 
   function fitToContainer() {
+    if (!terminalElement.offsetWidth || !terminalElement.offsetHeight) {
+      return;
+    }
+
     try {
       fitAddon.fit();
     } catch {

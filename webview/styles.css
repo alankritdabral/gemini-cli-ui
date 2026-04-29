@@ -41,6 +41,7 @@ body {
 }
 
 .status {
+  flex: 1 1 auto;
   display: inline-flex;
   min-width: 0;
   align-items: center;
@@ -77,6 +78,26 @@ button {
   font-size: 11px;
   cursor: pointer;
   white-space: nowrap;
+}
+
+@media (max-width: 200px) {
+  #statusText {
+    display: none;
+  }
+
+  .status {
+    gap: 0;
+  }
+
+  .toolbar {
+    padding: 0 4px;
+    gap: 4px;
+  }
+
+  button {
+    padding: 0 4px;
+    font-size: 10px;
+  }
 }
 
 button:hover {
