@@ -94,33 +94,30 @@ function buildTerminalPath(env: NodeJS.ProcessEnv): string {
   return [...pathEntries].join(delimiter);
 }
 
-export function getShellLaunchCommand(resume = true): { file: string; args: string[] } {
-  if (process.platform === "win32") {
-    const command = resume
-      ? "$ErrorActionPreference = 'SilentlyContinue'; if (Get-Command gemini) { gemini --resume latest 2>$null; if ($LASTEXITCODE -ne 0) { gemini } } else { npx -y @google/gemini-cli --resume latest 2>$null; if ($LASTEXITCODE -ne 0) { npx -y @google/gemini-cli } }"
+export function getShellLaunchCommand(resume: boolean | string = true): { file: string; args: string[] } {
+  const isWindows = process.platform === "win32";
+  const resumeArg = typeof resume === "string" ? resume : "latest";
+  const shouldResume = !!resume;
+
+  if (isWindows) {
+    const command = shouldResume
+      ? `$ErrorActionPreference = 'SilentlyContinue'; if (Get-Command gemini) { gemini --resume ${resumeArg} 2>$null; if ($LASTEXITCODE -ne 0) { gemini } } else { npx -y @google/gemini-cli --resume ${resumeArg} 2>$null; if ($LASTEXITCODE -ne 0) { npx -y @google/gemini-cli } }`
       : "if (Get-Command gemini -ErrorAction SilentlyContinue) { gemini } else { npx -y @google/gemini-cli }";
 
     return {
       file: "powershell.exe",
-      args: [
-        "-NoLogo",
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-Command",
-        command
-      ]
+      args: ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command]
     };
   }
 
   const shell = "/bin/bash";
 
-  const geminiCmd = resume
-    ? "gemini --resume latest 2>/dev/null || gemini"
+  const geminiCmd = shouldResume
+    ? `gemini --resume ${resumeArg} 2>/dev/null || gemini`
     : "gemini";
 
-  const npxCmd = resume
-    ? "npx -y @google/gemini-cli --resume latest 2>/dev/null || npx -y @google/gemini-cli"
+  const npxCmd = shouldResume
+    ? `npx -y @google/gemini-cli --resume ${resumeArg} 2>/dev/null || npx -y @google/gemini-cli`
     : "npx -y @google/gemini-cli";
 
   return {
@@ -128,9 +125,9 @@ export function getShellLaunchCommand(resume = true): { file: string; args: stri
     args: [
       "-lc",
       [
-        "export NVM_DIR=\"${NVM_DIR:-$HOME/.nvm}\"",
-        "if [ -s \"$NVM_DIR/nvm.sh\" ]; then",
-        "  . \"$NVM_DIR/nvm.sh\"",
+        'export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"',
+        'if [ -s "$NVM_DIR/nvm.sh" ]; then',
+        '  . "$NVM_DIR/nvm.sh"',
         "  nvm use --silent default >/dev/null 2>&1 || nvm use --silent node >/dev/null 2>&1 || true",
         "fi",
         "if command -v gemini >/dev/null 2>&1; then",

@@ -1,3 +1,4 @@
+import * as cp from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -62,13 +63,78 @@ export class GeminiTerminalSession {
       case "newChat":
         this.restartTerminalProcess(false);
         break;
+      case "listSessions":
+        void this.showSessionPicker();
+        break;
+      case "resumeSession":
+        this.restartTerminalProcess(message.id);
+        break;
     }
   }
 
-  private startTerminalProcess(resume = true) {
-    if (this.terminalProcess || this.isDisposed) {
+  private async showSessionPicker() {
+    const options = this.getPtyOptions();
+    
+    // Run gemini --list-sessions
+    const command = process.platform === "win32" ? "gemini --list-sessions" : "bash -lc 'gemini --list-sessions'";
+    
+    cp.exec(command, { cwd: options.cwd, env: options.env }, async (error, stdout) => {
+      if (error) {
+        // Try npx fallback
+        const npxCommand = process.platform === "win32" ? "npx -y @google/gemini-cli --list-sessions" : "bash -lc 'npx -y @google/gemini-cli --list-sessions'";
+        cp.exec(npxCommand, { cwd: options.cwd, env: options.env }, async (npxError, npxStdout) => {
+          if (npxError) {
+            void vscode.window.showErrorMessage(`Failed to list sessions: ${formatError(npxError)}`);
+            return;
+          }
+          this.processSessionList(npxStdout);
+        });
+        return;
+      }
+      this.processSessionList(stdout);
+    });
+  }
+
+  private processSessionList(output: string) {
+    // Parse: 1. Summary (Date) [UUID]
+    const lines = output.split("\n");
+    const sessions: { label: string; description: string; id: string }[] = [];
+    
+    // Improved regex to be more forgiving with whitespace and formatting
+    const regex = /^\s*\d+\.\s+(.*?)\s+\((.*?)\)\s+\[([a-fA-F0-9-]+)\]\s*$/;
+    
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      if (!trimmedLine) {
+        continue;
+      }
+      
+      const match = trimmedLine.match(regex);
+      if (match) {
+        sessions.push({
+          label: match[1].trim(),
+          description: match[2].trim(),
+          id: match[3].trim()
+        });
+      }
+    }
+
+    // Always send the list (even if empty) to update the webview state
+    void this.webview.postMessage({ type: "sessionsList", sessions });
+  }
+
+  private startTerminalProcess(resume: boolean | string = true) {
+    if (this.terminalProcess) {
+      this.terminalProcess.kill();
+      this.terminalProcess = undefined;
+      void this.webview.postMessage({ type: "clear" });
+    }
+
+    if (this.isDisposed) {
       return;
     }
+
+    void this.webview.postMessage({ type: "clear" });
 
     const options = this.getPtyOptions();
     const command = getShellLaunchCommand(resume);
@@ -106,7 +172,7 @@ export class GeminiTerminalSession {
     });
   }
 
-  private restartTerminalProcess(resume = true) {
+  private restartTerminalProcess(resume: boolean | string = true) {
     this.killTerminalProcess();
     void this.webview.postMessage({ type: "clear" });
     this.startTerminalProcess(resume);

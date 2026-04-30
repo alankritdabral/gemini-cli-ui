@@ -5,7 +5,9 @@ export type WebviewToExtensionMessage =
   | { type: "input"; data: string }
   | { type: "resize"; cols: number; rows: number }
   | { type: "restart" }
-  | { type: "newChat" };
+  | { type: "newChat" }
+  | { type: "listSessions" }
+  | { type: "resumeSession"; id: string };
 
 export type PtySessionOptions = {
   cwd: string;

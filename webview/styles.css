@@ -38,7 +38,6 @@ body {
   padding: 0 8px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   background: #161b22;
-  overflow: hidden;
 }
 
 .status {
@@ -61,6 +60,30 @@ body {
   box-shadow: 0 0 8px rgba(63, 185, 80, 0.75);
 }
 
+.spinner {
+  display: none;
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-top: 2px solid #58a6ff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex: 0 0 auto;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading .spinner {
+  display: block;
+}
+
+.loading .status-dot {
+  display: none;
+}
+
 #statusText {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -71,6 +94,104 @@ body {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown-content {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  background-color: #161b22;
+  min-width: 250px;
+  max-width: 400px;
+  max-height: 300px;
+  overflow-y: auto;
+  box-shadow: 0px 8px 16px 0px rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  z-index: 1000;
+  margin-top: 4px;
+}
+
+.dropdown-content button {
+  width: 100%;
+  height: auto;
+  padding: 8px 12px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.dropdown-content button:last-child {
+  border-bottom: none;
+}
+
+.dropdown-content button:hover {
+  background-color: #21262d;
+}
+
+.dropdown-content .session-label {
+  font-weight: 500;
+  color: #f0f6fc;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropdown-content .session-desc {
+  font-size: 0.85em;
+  color: #8b949e;
+}
+
+.dropdown-content .info-message {
+  padding: 12px;
+  color: #8b949e;
+  font-size: 0.9em;
+  text-align: center;
+}
+
+.skeleton-item {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.skeleton-line {
+  background: linear-gradient(90deg, #161b22 25%, #21262d 50%, #161b22 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+.skeleton-line.label {
+  height: 14px;
+  width: 80%;
+}
+
+.skeleton-line.desc {
+  height: 10px;
+  width: 50%;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.show {
+  display: block;
 }
 
 button {

@@ -14,11 +14,18 @@
   <body data-platform="{{platform}}">
     <main class="terminal-shell">
       <div class="toolbar" role="toolbar" aria-label="Gemini CLI controls">
-        <div class="status">
+        <div class="status" id="statusContainer">
           <span class="status-dot" aria-hidden="true"></span>
+          <div class="spinner" aria-hidden="true"></div>
           <span id="statusText">Starting Gemini CLI</span>
         </div>
         <div class="actions">
+          <div class="dropdown">
+            <button id="historyButton" type="button" title="Browse previous chat sessions">History</button>
+            <div id="historyDropdown" class="dropdown-content">
+              <!-- Sessions will be populated here -->
+            </div>
+          </div>
           <button id="newChatButton" type="button" title="Start a fresh Gemini CLI session">New Chat</button>
           <button id="restartButton" type="button" title="Restart Gemini CLI">Restart</button>
         </div>

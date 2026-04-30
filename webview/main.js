@@ -2,10 +2,20 @@
   const vscode = acquireVsCodeApi();
   const terminalElement = document.getElementById("terminal");
   const statusText = document.getElementById("statusText");
+  const statusContainer = document.getElementById("statusContainer");
   const restartButton = document.getElementById("restartButton");
   const newChatButton = document.getElementById("newChatButton");
+  const historyButton = document.getElementById("historyButton");
+  const historyDropdown = document.getElementById("historyDropdown");
 
   const platform = document.body.getAttribute("data-platform");
+
+  let isBusy = false;
+  let cooldownActive = false;
+  const ACTION_COOLDOWN_MS = 1500;
+
+  // Initial loading state
+  setLoading(true);
 
   // Dynamically read VS Code editor font settings from CSS variables
   const computedStyle = getComputedStyle(document.body);
@@ -79,16 +89,43 @@
     vscode.postMessage({ type: "resize", cols, rows });
   });
 
-  restartButton.addEventListener("click", () => {
-    setStatus("Restarting Gemini CLI");
-    vscode.postMessage({ type: "restart" });
+  function startAction(type, label) {
+    if (isBusy || cooldownActive) return;
+    
+    setLoading(true);
+    cooldownActive = true;
+    setStatus(label);
+    vscode.postMessage({ type });
     terminal.focus();
+
+    setTimeout(() => {
+      cooldownActive = false;
+    }, ACTION_COOLDOWN_MS);
+  }
+
+  restartButton.addEventListener("click", () => {
+    startAction("restart", "Restarting Gemini CLI");
   });
 
   newChatButton.addEventListener("click", () => {
-    setStatus("Starting New Chat");
-    vscode.postMessage({ type: "newChat" });
-    terminal.focus();
+    startAction("newChat", "Starting New Chat");
+  });
+
+  historyButton.addEventListener("click", (event) => {
+    if (isBusy || cooldownActive) return;
+    const isShowing = historyDropdown.classList.contains("show");
+    if (!isShowing) {
+      setLoading(true);
+      showHistorySkeleton();
+      vscode.postMessage({ type: "listSessions" });
+    }
+    historyDropdown.classList.toggle("show");
+    event.stopPropagation();
+  });
+
+  // Close dropdown when clicking outside
+  window.addEventListener("click", () => {
+    historyDropdown.classList.remove("show");
   });
 
   window.addEventListener("message", (event) => {
@@ -96,20 +133,68 @@
 
     switch (message.type) {
       case "output":
+        setLoading(false);
         setStatus("Gemini CLI");
         terminal.write(message.data);
         break;
       case "clear":
-        terminal.clear();
+        terminal.reset();
+        terminal.write("\x1bc"); // Hard reset ANSI sequence
+        break;
+      case "sessionsList":
+        setLoading(false);
+        populateHistoryDropdown(message.sessions);
         break;
       case "exit":
+        setLoading(false);
         setStatus(`Gemini CLI exited (${formatExit(message)})`);
-        terminal.writeln("");
-        terminal.writeln(`\x1b[33m[Gemini CLI exited: ${formatExit(message)}]\x1b[0m`);
-        terminal.writeln("\x1b[2mUse Restart to launch it again.\x1b[0m");
         break;
     }
   });
+
+  function populateHistoryDropdown(sessions) {
+    historyDropdown.innerHTML = "";
+    if (!sessions || sessions.length === 0) {
+      historyDropdown.innerHTML = '<div class="info-message">No history found.</div>';
+      return;
+    }
+
+    sessions.forEach((session) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.innerHTML = `
+        <span class="session-label">${session.label}</span>
+        <span class="session-desc">${session.description}</span>
+      `;
+      btn.addEventListener("click", () => {
+        if (isBusy || cooldownActive) return;
+        
+        setLoading(true);
+        cooldownActive = true;
+        setStatus("Resuming Session...");
+        vscode.postMessage({ type: "resumeSession", id: session.id });
+        historyDropdown.classList.remove("show");
+
+        setTimeout(() => {
+          cooldownActive = false;
+        }, ACTION_COOLDOWN_MS);
+      });
+      historyDropdown.appendChild(btn);
+    });
+  }
+
+  function showHistorySkeleton() {
+    historyDropdown.innerHTML = "";
+    for (let i = 0; i < 4; i++) {
+      const item = document.createElement("div");
+      item.className = "skeleton-item";
+      item.innerHTML = `
+        <div class="skeleton-line label"></div>
+        <div class="skeleton-line desc"></div>
+      `;
+      historyDropdown.appendChild(item);
+    }
+  }
 
   let resizeTimeout;
   const debouncedFit = () => {
@@ -145,6 +230,15 @@
 
   function setStatus(text) {
     statusText.textContent = text;
+  }
+
+  function setLoading(isLoading) {
+    isBusy = isLoading;
+    if (isLoading) {
+      statusContainer.classList.add("loading");
+    } else {
+      statusContainer.classList.remove("loading");
+    }
   }
 
   function formatExit(message) {
