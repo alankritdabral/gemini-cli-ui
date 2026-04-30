@@ -32,11 +32,16 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Bump version
+        id: bump
         run: |
-          npm version patch -m "chore: bump version to %s [skip ci]"
+          # Increment version and get the new version number
+          NEW_VERSION=$(npm version patch -m "chore: bump version to %s [skip ci]")
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          
+          # Push the commit and the tag
           git push origin main --follow-tags
 
       - name: Publish to Marketplace
-        run: npx vsce publish -p ${{ secrets.VSCE_PAT }}
+        run: npx vsce publish --no-update-package-json -p ${{ secrets.VSCE_PAT }}
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}

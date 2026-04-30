@@ -5,6 +5,7 @@
   "description": "Run the Gemini CLI in a real PTY-backed xterm.js terminal inside VS Code.",
   "version": "0.1.2",
   "publisher": "AlankritDabral",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/alankritdabral/gemini-cli-ui.git"
@@ -12,12 +13,20 @@
   "bugs": {
     "url": "https://github.com/alankritdabral/gemini-cli-ui/issues"
   },
-  "private": true,
   "engines": {
     "vscode": "^1.90.0"
   },
   "categories": [
+    "Machine Learning",
+    "Programming Languages",
     "Other"
+  ],
+  "keywords": [
+    "gemini",
+    "ai",
+    "terminal",
+    "cli",
+    "chat"
   ],
   "activationEvents": [],
   "main": "./out/extension.js",

@@ -94,8 +94,12 @@ function buildTerminalPath(env: NodeJS.ProcessEnv): string {
   return [...pathEntries].join(delimiter);
 }
 
-export function getShellLaunchCommand(): { file: string; args: string[] } {
+export function getShellLaunchCommand(resume = true): { file: string; args: string[] } {
   if (process.platform === "win32") {
+    const command = resume
+      ? "$ErrorActionPreference = 'SilentlyContinue'; if (Get-Command gemini) { gemini --resume latest 2>$null; if ($LASTEXITCODE -ne 0) { gemini } } else { npx -y @google/gemini-cli --resume latest 2>$null; if ($LASTEXITCODE -ne 0) { npx -y @google/gemini-cli } }"
+      : "if (Get-Command gemini -ErrorAction SilentlyContinue) { gemini } else { npx -y @google/gemini-cli }";
+
     return {
       file: "powershell.exe",
       args: [
@@ -104,12 +108,20 @@ export function getShellLaunchCommand(): { file: string; args: string[] } {
         "-ExecutionPolicy",
         "Bypass",
         "-Command",
-        "$ErrorActionPreference = 'SilentlyContinue'; if (Get-Command gemini) { gemini --resume latest 2>$null; if ($LASTEXITCODE -ne 0) { gemini } } else { npx -y @google/gemini-cli --resume latest 2>$null; if ($LASTEXITCODE -ne 0) { npx -y @google/gemini-cli } }"
+        command
       ]
     };
   }
 
   const shell = "/bin/bash";
+
+  const geminiCmd = resume
+    ? "gemini --resume latest 2>/dev/null || gemini"
+    : "gemini";
+
+  const npxCmd = resume
+    ? "npx -y @google/gemini-cli --resume latest 2>/dev/null || npx -y @google/gemini-cli"
+    : "npx -y @google/gemini-cli";
 
   return {
     file: shell,
@@ -122,9 +134,9 @@ export function getShellLaunchCommand(): { file: string; args: string[] } {
         "  nvm use --silent default >/dev/null 2>&1 || nvm use --silent node >/dev/null 2>&1 || true",
         "fi",
         "if command -v gemini >/dev/null 2>&1; then",
-        "  gemini --resume latest 2>/dev/null || gemini",
+        `  ${geminiCmd}`,
         "else",
-        "  npx -y @google/gemini-cli --resume latest 2>/dev/null || npx -y @google/gemini-cli",
+        `  ${npxCmd}`,
         "fi"
       ].join("\n")
     ]

@@ -3,16 +3,22 @@
   const terminalElement = document.getElementById("terminal");
   const statusText = document.getElementById("statusText");
   const restartButton = document.getElementById("restartButton");
+  const newChatButton = document.getElementById("newChatButton");
 
   const platform = document.body.getAttribute("data-platform");
+
+  // Dynamically read VS Code editor font settings from CSS variables
+  const computedStyle = getComputedStyle(document.body);
+  const editorFontSize = parseInt(computedStyle.getPropertyValue('--vscode-editor-font-size')) || 12;
+  const editorFontFamily = computedStyle.getPropertyValue('--vscode-editor-font-family') || 
+    'Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
 
   const terminal = new Terminal({
     allowProposedApi: false,
     cursorBlink: true,
     cursorStyle: "block",
-    fontFamily:
-      'Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-    fontSize: 12,
+    fontFamily: editorFontFamily,
+    fontSize: editorFontSize,
     lineHeight: 1.1,
     scrollback: 10000,
     theme: {
@@ -33,6 +39,16 @@
   terminal.loadAddon(webLinksAddon);
   terminal.open(terminalElement);
   terminal.focus();
+
+  // Handle Ctrl+V / Cmd+V explicitly to ensure they trigger the 'paste' event
+  terminal.attachCustomKeyEventHandler((event) => {
+    // Check for Ctrl+V (Windows/Linux) or Cmd+V (Mac)
+    const isPaste = (event.ctrlKey || event.metaKey) && event.key === "v";
+    if (isPaste && event.type === "keydown") {
+      return false; // Let the browser handle it (triggers paste event)
+    }
+    return true;
+  });
 
   // Ensure terminal stays focused when clicked
   terminalElement.addEventListener("mousedown", () => {
@@ -66,6 +82,12 @@
   restartButton.addEventListener("click", () => {
     setStatus("Restarting Gemini CLI");
     vscode.postMessage({ type: "restart" });
+    terminal.focus();
+  });
+
+  newChatButton.addEventListener("click", () => {
+    setStatus("Starting New Chat");
+    vscode.postMessage({ type: "newChat" });
     terminal.focus();
   });
 

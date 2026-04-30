@@ -19,6 +19,7 @@ body {
 body {
   color: #d6deeb;
   font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
 }
 
 .terminal-shell {
@@ -47,7 +48,7 @@ body {
   align-items: center;
   gap: 8px;
   color: #c9d1d9;
-  font-size: 12px;
+  font-size: 0.9em;
   overflow: hidden;
 }
 
@@ -66,6 +67,12 @@ body {
   white-space: nowrap;
 }
 
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 button {
   flex: 0 0 auto;
   height: 24px;
@@ -75,7 +82,7 @@ button {
   background: #21262d;
   color: #f0f6fc;
   font: inherit;
-  font-size: 11px;
+  font-size: 0.85em;
   cursor: pointer;
   white-space: nowrap;
 }

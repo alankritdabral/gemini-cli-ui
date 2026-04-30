@@ -57,18 +57,21 @@ export class GeminiTerminalSession {
         this.resizeTerminal(message.cols, message.rows);
         break;
       case "restart":
-        this.restartTerminalProcess();
+        this.restartTerminalProcess(true);
+        break;
+      case "newChat":
+        this.restartTerminalProcess(false);
         break;
     }
   }
 
-  private startTerminalProcess() {
+  private startTerminalProcess(resume = true) {
     if (this.terminalProcess || this.isDisposed) {
       return;
     }
 
     const options = this.getPtyOptions();
-    const command = getShellLaunchCommand();
+    const command = getShellLaunchCommand(resume);
 
     try {
       const nodePty = loadNodePty();
@@ -103,10 +106,10 @@ export class GeminiTerminalSession {
     });
   }
 
-  private restartTerminalProcess() {
+  private restartTerminalProcess(resume = true) {
     this.killTerminalProcess();
     void this.webview.postMessage({ type: "clear" });
-    this.startTerminalProcess();
+    this.startTerminalProcess(resume);
   }
 
   private killTerminalProcess() {
