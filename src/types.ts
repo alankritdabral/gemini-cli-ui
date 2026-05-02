@@ -7,7 +7,20 @@ export type WebviewToExtensionMessage =
   | { type: "restart" }
   | { type: "newChat" }
   | { type: "listSessions" }
-  | { type: "resumeSession"; id: string };
+  | { type: "resumeSession"; id: string }
+  | { type: "browser_switch" }
+  | { type: "browser_inspect_mode"; enabled: boolean }
+  | { type: "browser_navigate"; url: string }
+  | { type: "browser_refresh" }
+  | { type: "browser_back" }
+  | { type: "browser_forward" }
+  | { type: "browser_element_selected"; context: string; url?: string };
+
+export type ExtensionToBrowserMessage =
+  | { type: "browser_load"; url: string }
+  | { type: "browser_click"; selector: string }
+  | { type: "browser_type"; selector: string; text: string }
+  | { type: "browser_inspect_mode"; enabled: boolean };
 
 export type PtySessionOptions = {
   cwd: string;

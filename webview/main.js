@@ -7,6 +7,7 @@
   const newChatButton = document.getElementById("newChatButton");
   const historyButton = document.getElementById("historyButton");
   const historyDropdown = document.getElementById("historyDropdown");
+  const browserButton = document.getElementById("browserButton");
 
   const platform = document.body.getAttribute("data-platform");
 
@@ -109,6 +110,10 @@
 
   newChatButton.addEventListener("click", () => {
     startAction("newChat", "Starting New Chat");
+  });
+
+  browserButton.addEventListener("click", () => {
+    vscode.postMessage({ type: "browser_switch" });
   });
 
   historyButton.addEventListener("click", (event) => {

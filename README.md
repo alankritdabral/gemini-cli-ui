@@ -7,7 +7,9 @@ Gemini CLI UI is a VS Code extension that brings the power of the [Gemini CLI](h
 ## Features
 
 - **Sidebar Chat View**: Access the Gemini CLI from a convenient sidebar, allowing you to chat without leaving your code.
-- **PTY-Backed Terminal**: Uses `node-pty` and `xterm.js` for a authentic terminal experience, supporting interactive commands and full-color output.
+- **Gemini Browser**: A native, in-app browser for previewing your web applications directly inside VS Code.
+- **Element Inspector (Cursor Style)**: Click UI components in the Gemini Browser to automatically send their HTML and URL context to the AI chat.
+- **PTY-Backed Terminal**: Uses `node-pty` and `xterm.js` for an authentic terminal experience, supporting interactive commands and full-color output.
 - **Smart Node.js Detection**: Automatically finds the best Node.js version on your system (supporting NVM, Volta, fnm, etc.) to run the CLI.
 - **Cross-Platform**: Works on Windows (PowerShell), macOS, and Linux (Bash).
 - **Responsive Design**: UI scales perfectly for both the sidebar and full editor views.
@@ -35,6 +37,12 @@ Gemini CLI UI is a VS Code extension that brings the power of the [Gemini CLI](h
 1. Open the Command Palette (`Ctrl+Shift+P`).
 2. Run the command **Gemini: Open Gemini CLI UI**.
 3. A new editor tab will open with the Gemini terminal.
+
+### Gemini Browser
+1. Click the **Browser** button in the Gemini Sidebar (next to History).
+2. Enter your application URL (e.g., `localhost:3000`) and click **Go**.
+3. Click the **🔍 (Inspect)** icon to enter Selection Mode.
+4. Click any element on the page to send its code and URL context directly to the Gemini AI.
 
 ## Development
 

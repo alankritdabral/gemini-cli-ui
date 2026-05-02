@@ -14,6 +14,7 @@ import { formatError, getNonce } from "../utils";
 import { getShellLaunchCommand, getTerminalEnvironment, loadNodePty } from "./pty";
 
 export class GeminiTerminalSession {
+  private static readonly activeSessions = new Set<GeminiTerminalSession>();
   private readonly disposables: vscode.Disposable[] = [];
   private terminalProcess: NodePty.IPty | undefined;
   private cols = DEFAULT_COLS;
@@ -25,6 +26,7 @@ export class GeminiTerminalSession {
     private readonly webview: vscode.Webview
   ) {
     this.webview.html = this.getHtml();
+    GeminiTerminalSession.activeSessions.add(this);
 
     this.disposables.push(
       this.webview.onDidReceiveMessage((message: WebviewToExtensionMessage) => {
@@ -39,10 +41,17 @@ export class GeminiTerminalSession {
     }
 
     this.isDisposed = true;
+    GeminiTerminalSession.activeSessions.delete(this);
     this.killTerminalProcess();
 
     while (this.disposables.length > 0) {
       this.disposables.pop()?.dispose();
+    }
+  }
+
+  public static sendToActiveSessions(data: string) {
+    for (const session of this.activeSessions) {
+      session.terminalProcess?.write(data);
     }
   }
 
@@ -68,6 +77,9 @@ export class GeminiTerminalSession {
         break;
       case "resumeSession":
         this.restartTerminalProcess(message.id);
+        break;
+      case "browser_switch":
+        void vscode.commands.executeCommand("gemini.browser.open");
         break;
     }
   }
@@ -160,6 +172,7 @@ export class GeminiTerminalSession {
 
     this.terminalProcess.onData((data) => {
       void this.webview.postMessage({ type: "output", data });
+      this.handleTerminalData(data);
     });
 
     this.terminalProcess.onExit(({ exitCode, signal }) => {
@@ -257,5 +270,18 @@ export class GeminiTerminalSession {
     }
 
     return html;
+  }
+
+  private handleTerminalData(data: string) {
+    // Basic regex to detect browser commands in the stream
+    // Pattern: <<BROWSER_COMMAND:ARGS>>
+    const navigateMatch = data.match(/<<BROWSER_NAVIGATE:(.*?)>>/);
+    if (navigateMatch) {
+      const url = navigateMatch[1].trim();
+      void vscode.commands.executeCommand("gemini.browser.open");
+      
+      // Notify the user. In a full implementation, we would send a message to the BrowserPanel.
+      void vscode.window.showInformationMessage(`Gemini requested navigation to: ${url}`);
+    }
   }
 }
