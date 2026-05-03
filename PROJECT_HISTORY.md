@@ -28,11 +28,21 @@ The goal was to eliminate context switching between VS Code and external browser
 **The Issue:** Users reported that clicking "New Chat" would sometimes lead to a state where they couldn't type. This was caused by a race condition where the exit of the old terminal process would accidentally "zero out" the reference to the newly started process. Additionally, focus was often lost during the transition.
 **The Solution:** We implemented **Process Instance Validation** to ensure that exit signals from old sessions don't affect the current one. We also added an **Input Buffer** that captures keystrokes during the PTY's brief startup phase and flushes them once the shell is ready, coupled with a **Global Focus Capture** strategy that redirects keyboard events to the terminal even if focus was temporarily lost.
 
+### Problem F: Snap VS Code DNS Timeouts
+**The Issue:** On Linux installs where VS Code runs through Snap, the browser proxy could hang while resolving external domains such as `google.com`. Local shell DNS worked, but the VS Code extension host stalled in DNS long enough for the webview request to time out. This produced blank pages or navigation errors even though the network itself was online.
+**The Solution:** We added **Fail-Fast Network Diagnostics** and a **Layered DNS Resolver** to the browser proxy. The proxy now reports whether a request is stuck in DNS, TCP connect, TLS, or response wait. For external hosts, it avoids relying on only `dns.lookup` and falls back through Node c-ares `dns.resolve4`, public DNS servers, and DNS-over-HTTPS to `1.1.1.1`. This bypasses the slow/broken resolver path in the Snap extension host and keeps the request inside VS Code's response budget.
+
+### Problem G: CORS & Browser Security Limits
+**The Issue:** The proxy currently strips common blocking headers and injects the inspector script, which works for many local apps and simple pages. It does not fully emulate a browser, though. Some sites still fail because their JavaScript performs API calls against the original origin, uses strict CSP, checks `Origin`/`Referer`, depends on cookies, uses service workers, locks assets behind CORS, or builds absolute URLs that escape the proxy.
+**The Planned Solution:** Move from a simple header-stripping proxy to a **Full Rewrite Proxy**. HTML, CSS, JavaScript entry points, fetch/XHR calls, redirects, cookies, and asset URLs should be rewritten so every subrequest flows back through the extension proxy under one controlled origin. For sites that cannot safely be rewritten, the browser should fall back to a real browser automation mode, such as Playwright or the VS Code simple browser style, instead of pretending that CORS can always be bypassed.
+
 ## 3. Key Technical Milestones
 - **Bridge Architecture**: Created a type-safe messaging protocol between the Extension Host, the Webview Shell, and the injected Iframe script.
 - **Dynamic Proxy Mapping**: Built logic to map internal proxy ports back to the user's intended URLs for a seamless address bar experience.
 - **Smart Labeling**: Developed a tag-parsing engine that automatically generates friendly names (e.g., `para1`, `button2`) for captured elements.
 - **Session Instance Management**: Developed a robust PTY session lifecycle that handles rapid restarts and input buffering to prevent data loss during transitions.
+- **Layered DNS Resolution**: Added DNS diagnostics and fallback resolvers so Snap-hosted VS Code extension processes can still resolve external domains.
+- **Proxy Hardening Plan**: Documented the path from header stripping toward a full rewrite proxy for better CORS and asset handling.
 
 ## 4. Final Result
 A fully functional, AI-integrated browser that allows users to "point and click" on their UI to give the Gemini agent the exact context it needs to fix bugs or build features.
