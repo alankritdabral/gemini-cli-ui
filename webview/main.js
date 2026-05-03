@@ -3,7 +3,6 @@
   const terminalElement = document.getElementById("terminal");
   const statusText = document.getElementById("statusText");
   const statusContainer = document.getElementById("statusContainer");
-  const restartButton = document.getElementById("restartButton");
   const newChatButton = document.getElementById("newChatButton");
   const historyButton = document.getElementById("historyButton");
   const historyDropdown = document.getElementById("historyDropdown");
@@ -61,19 +60,32 @@
     return true;
   });
 
-  // Ensure terminal stays focused when clicked
-  terminalElement.addEventListener("mousedown", () => {
-    setTimeout(() => terminal.focus(), 0);
+  // Redirect global key events to terminal if not focusing an input
+  window.addEventListener("keydown", (event) => {
+    if (document.activeElement.tagName !== "INPUT" && 
+        document.activeElement.tagName !== "TEXTAREA" &&
+        !document.activeElement.isContentEditable) {
+      terminal.focus();
+    }
+  }, true);
+
+  // Ensure terminal stays focused when clicked anywhere except buttons
+  document.addEventListener("mousedown", (event) => {
+    if (!event.target.closest("button") && !event.target.closest(".dropdown-content")) {
+      setTimeout(() => terminal.focus(), 0);
+    }
   });
 
   terminal.onData((data) => {
     vscode.postMessage({ type: "input", data });
   });
 
+  // Force focus to terminal when window gains focus
+  window.addEventListener("focus", () => {
+    setTimeout(() => terminal.focus(), 0);
+  });
+
   // Handle paste events explicitly in the webview.
-  // We use both the terminal element and document to ensure we catch the event.
-  // We preventDefault to let the PTY handle the input and echo it back,
-  // avoiding duplicate characters if xterm.js also tries to handle it.
   const handlePaste = (event) => {
     const data = (event.clipboardData || window.clipboardData)?.getData("text");
     if (data) {
@@ -81,6 +93,7 @@
     }
     event.preventDefault();
     event.stopPropagation();
+    setTimeout(() => terminal.focus(), 0);
   };
 
   terminalElement.addEventListener("paste", handlePaste, true);
@@ -91,22 +104,28 @@
   });
 
   function startAction(type, label) {
-    if (isBusy || cooldownActive) return;
+    // restart and newChat can bypass isBusy to allow recovery from hangs
+    const isRecoveryAction = type === "restart" || type === "newChat";
+    if ((isBusy && !isRecoveryAction) || cooldownActive) return;
     
     setLoading(true);
     cooldownActive = true;
     setStatus(label);
     vscode.postMessage({ type });
-    terminal.focus();
+    
+    // De-focus the button to ensure keyboard focus can go to terminal
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    
+    setTimeout(() => {
+      terminal.focus();
+    }, 100);
 
     setTimeout(() => {
       cooldownActive = false;
     }, ACTION_COOLDOWN_MS);
   }
-
-  restartButton.addEventListener("click", () => {
-    startAction("restart", "Restarting Gemini CLI");
-  });
 
   newChatButton.addEventListener("click", () => {
     startAction("newChat", "Starting New Chat");
@@ -138,13 +157,19 @@
 
     switch (message.type) {
       case "output":
-        setLoading(false);
-        setStatus("Gemini CLI");
+        // If we get output, the process is alive. 
+        // Reset status if it was busy or showing an old exit message.
+        if (isBusy || statusText.textContent.includes("exited")) {
+          setLoading(false);
+          setStatus("Gemini CLI");
+          terminal.focus();
+        }
         terminal.write(message.data);
         break;
       case "clear":
         terminal.reset();
         terminal.write("\x1bc"); // Hard reset ANSI sequence
+        terminal.focus();
         break;
       case "sessionsList":
         setLoading(false);
@@ -243,6 +268,8 @@
       statusContainer.classList.add("loading");
     } else {
       statusContainer.classList.remove("loading");
+      // Ensure terminal is focused when an operation completes
+      setTimeout(() => terminal.focus(), 0);
     }
   }
 

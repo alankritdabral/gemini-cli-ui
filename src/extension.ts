@@ -21,9 +21,10 @@ export function activate(context: vscode.ExtensionContext) {
       panel.onDidDispose(() => activeTerminalSessions.delete(panel));
     }),
     vscode.commands.registerCommand("gemini.browser.open", () => {
-      const panel = new GeminiBrowserPanel(context.extensionUri);
-      activeBrowserSessions.add(panel);
-      panel.onDidDispose(() => activeBrowserSessions.delete(panel));
+      GeminiBrowserPanel.createOrShow(context.extensionUri);
+    }),
+    vscode.commands.registerCommand("gemini.browser.navigate", (url: string) => {
+      GeminiBrowserPanel.currentPanel?.navigate(url);
     }),
     vscode.window.registerWebviewPanelSerializer("geminiTerminal", {
       async deserializeWebviewPanel(webviewPanel: vscode.WebviewPanel) {

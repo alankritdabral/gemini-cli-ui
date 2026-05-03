@@ -219,7 +219,6 @@ button {
 
   #historyButton::before { content: "H"; }
   #newChatButton::before { content: "N"; }
-  #restartButton::before { content: "R"; }
 }
 
 @media (max-width: 200px) {

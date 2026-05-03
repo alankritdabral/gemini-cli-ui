@@ -24,10 +24,15 @@ The goal was to eliminate context switching between VS Code and external browser
 **The Symbol:** We wanted the visual simplicity of Gemini CLI's `[Pasted text]` feature.
 **The Solution:** We implemented **Bracketed Paste Summarization**. By wrapping the HTML in specific ANSI escape sequences (`\x1b[200~`), we tell the terminal to handle it as a paste. We then provide a clean, descriptive label (like `[button: Save Changes]`) for the user while the AI receives the full underlying context.
 
+### Problem E: Terminal Focus & Race Conditions
+**The Issue:** Users reported that clicking "New Chat" would sometimes lead to a state where they couldn't type. This was caused by a race condition where the exit of the old terminal process would accidentally "zero out" the reference to the newly started process. Additionally, focus was often lost during the transition.
+**The Solution:** We implemented **Process Instance Validation** to ensure that exit signals from old sessions don't affect the current one. We also added an **Input Buffer** that captures keystrokes during the PTY's brief startup phase and flushes them once the shell is ready, coupled with a **Global Focus Capture** strategy that redirects keyboard events to the terminal even if focus was temporarily lost.
+
 ## 3. Key Technical Milestones
 - **Bridge Architecture**: Created a type-safe messaging protocol between the Extension Host, the Webview Shell, and the injected Iframe script.
 - **Dynamic Proxy Mapping**: Built logic to map internal proxy ports back to the user's intended URLs for a seamless address bar experience.
 - **Smart Labeling**: Developed a tag-parsing engine that automatically generates friendly names (e.g., `para1`, `button2`) for captured elements.
+- **Session Instance Management**: Developed a robust PTY session lifecycle that handles rapid restarts and input buffering to prevent data loss during transitions.
 
 ## 4. Final Result
 A fully functional, AI-integrated browser that allows users to "point and click" on their UI to give the Gemini agent the exact context it needs to fix bugs or build features.

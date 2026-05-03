@@ -12,11 +12,16 @@ import {
 } from "../types";
 import { formatError, getNonce } from "../utils";
 import { getShellLaunchCommand, getTerminalEnvironment, loadNodePty } from "./pty";
+import { GeminiBrowserPanel } from "../views/browserPanel";
 
 export class GeminiTerminalSession {
+
   private static readonly activeSessions = new Set<GeminiTerminalSession>();
   private readonly disposables: vscode.Disposable[] = [];
   private terminalProcess: NodePty.IPty | undefined;
+  private inputBuffer: string[] = [];
+  private isStarting = false;
+  private startupTimeout: NodeJS.Timeout | undefined;
   private cols = DEFAULT_COLS;
   private rows = DEFAULT_ROWS;
   private isDisposed = false;
@@ -61,7 +66,11 @@ export class GeminiTerminalSession {
         this.startTerminalProcess();
         break;
       case "input":
-        this.terminalProcess?.write(message.data);
+        if (this.terminalProcess) {
+          this.terminalProcess.write(message.data);
+        } else if (this.isStarting) {
+          this.inputBuffer.push(message.data);
+        }
         break;
       case "resize":
         this.resizeTerminal(message.cols, message.rows);
@@ -136,15 +145,24 @@ export class GeminiTerminalSession {
   }
 
   private startTerminalProcess(resume: boolean | string = true) {
-    if (this.terminalProcess) {
-      this.terminalProcess.kill();
-      this.terminalProcess = undefined;
-      void this.webview.postMessage({ type: "clear" });
-    }
-
     if (this.isDisposed) {
       return;
     }
+
+    this.killTerminalProcess();
+    
+    if (this.startupTimeout) {
+      clearTimeout(this.startupTimeout);
+    }
+    
+    this.isStarting = true;
+    this.inputBuffer = [];
+
+    // Safety timeout: if process doesn't start in 10s, stop buffering
+    this.startupTimeout = setTimeout(() => {
+      this.isStarting = false;
+      this.startupTimeout = undefined;
+    }, 10000);
 
     void this.webview.postMessage({ type: "clear" });
 
@@ -153,14 +171,48 @@ export class GeminiTerminalSession {
 
     try {
       const nodePty = loadNodePty();
-      this.terminalProcess = nodePty.spawn(command.file, command.args, {
+      const ptyProcess = nodePty.spawn(command.file, command.args, {
         name: "xterm-256color",
         cols: options.cols,
         rows: options.rows,
         cwd: options.cwd,
         env: options.env
       });
+      this.terminalProcess = ptyProcess;
+
+      ptyProcess.onData((data) => {
+        if (this.terminalProcess === ptyProcess) {
+          void this.webview.postMessage({ type: "output", data });
+          this.handleTerminalData(data);
+        }
+      });
+
+      ptyProcess.onExit(({ exitCode, signal }) => {
+        if (this.terminalProcess === ptyProcess) {
+          this.terminalProcess = undefined;
+          this.isStarting = false;
+          void this.webview.postMessage({
+            type: "exit",
+            exitCode,
+            signal
+          });
+        }
+      });
+
+      // Flush buffered input once the process has started
+      if (this.inputBuffer.length > 0) {
+        const bufferedInput = this.inputBuffer.join("");
+        this.inputBuffer = [];
+        ptyProcess.write(bufferedInput);
+      }
+      
+      this.isStarting = false;
+      if (this.startupTimeout) {
+        clearTimeout(this.startupTimeout);
+        this.startupTimeout = undefined;
+      }
     } catch (error) {
+      this.isStarting = false;
       const message = `Failed to start Gemini CLI: ${formatError(error)}`;
       void vscode.window.showErrorMessage(message);
       void this.webview.postMessage({
@@ -169,25 +221,9 @@ export class GeminiTerminalSession {
       });
       return;
     }
-
-    this.terminalProcess.onData((data) => {
-      void this.webview.postMessage({ type: "output", data });
-      this.handleTerminalData(data);
-    });
-
-    this.terminalProcess.onExit(({ exitCode, signal }) => {
-      this.terminalProcess = undefined;
-      void this.webview.postMessage({
-        type: "exit",
-        exitCode,
-        signal
-      });
-    });
   }
 
   private restartTerminalProcess(resume: boolean | string = true) {
-    this.killTerminalProcess();
-    void this.webview.postMessage({ type: "clear" });
     this.startTerminalProcess(resume);
   }
 
@@ -278,10 +314,12 @@ export class GeminiTerminalSession {
     const navigateMatch = data.match(/<<BROWSER_NAVIGATE:(.*?)>>/);
     if (navigateMatch) {
       const url = navigateMatch[1].trim();
-      void vscode.commands.executeCommand("gemini.browser.open");
+      void vscode.commands.executeCommand("gemini.browser.navigate", url);
       
-      // Notify the user. In a full implementation, we would send a message to the BrowserPanel.
-      void vscode.window.showInformationMessage(`Gemini requested navigation to: ${url}`);
+      // Notify the user via a less intrusive message if browser isn't open
+      if (!GeminiBrowserPanel.currentPanel) {
+         void vscode.window.showInformationMessage(`Gemini suggested navigating to ${url}. Click "Browser" to see it.`);
+      }
     }
   }
 }

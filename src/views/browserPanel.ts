@@ -5,6 +5,7 @@ import { WebviewToExtensionMessage, ExtensionToBrowserMessage } from "../types";
 import { GeminiTerminalSession } from "../terminal/session";
 
 export class GeminiBrowserPanel {
+  public static currentPanel: GeminiBrowserPanel | undefined;
   private readonly panel: vscode.WebviewPanel;
   private currentUrl: string = "http://localhost:3000";
   private proxyServer?: http.Server;
@@ -14,23 +15,34 @@ export class GeminiBrowserPanel {
 
   readonly onDidDispose = this.disposeEmitter.event;
 
-  constructor(private readonly extensionUri: vscode.Uri, panel?: vscode.WebviewPanel) {
-    if (panel) {
-      this.panel = panel;
-    } else {
-      this.panel = vscode.window.createWebviewPanel(
-        "geminiBrowser",
-        "Gemini Browser",
-        vscode.ViewColumn.Two,
-        {
-          enableScripts: true,
-          retainContextWhenHidden: true,
-          localResourceRoots: [
-            vscode.Uri.joinPath(extensionUri, "webview")
-          ]
-        }
-      );
+  public static createOrShow(extensionUri: vscode.Uri) {
+    const column = vscode.window.activeTextEditor
+      ? vscode.window.activeTextEditor.viewColumn
+      : undefined;
+
+    if (GeminiBrowserPanel.currentPanel) {
+      GeminiBrowserPanel.currentPanel.panel.reveal(column);
+      return;
     }
+
+    const panel = vscode.window.createWebviewPanel(
+      "geminiBrowser",
+      "Gemini Browser",
+      column || vscode.ViewColumn.Two,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+        localResourceRoots: [
+          vscode.Uri.joinPath(extensionUri, "webview")
+        ]
+      }
+    );
+
+    GeminiBrowserPanel.currentPanel = new GeminiBrowserPanel(extensionUri, panel);
+  }
+
+  constructor(private readonly extensionUri: vscode.Uri, panel: vscode.WebviewPanel) {
+    this.panel = panel;
 
     this.panel.iconPath = {
       light: vscode.Uri.joinPath(extensionUri, "media", "gemini-light.svg"),
@@ -56,13 +68,17 @@ export class GeminiBrowserPanel {
     });
 
     this.panel.onDidDispose(() => {
-      this.proxyServer?.close();
+      this.dispose();
       this.disposeEmitter.fire();
       this.disposeEmitter.dispose();
     });
   }
 
-  private navigate(url: string) {
+  /**
+   * Navigate to a URL. If the browser is open, it updates.
+   * Does NOT reveal/focus the panel.
+   */
+  public navigate(url: string) {
     let normalized = url.trim();
     if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
       normalized = "http://" + normalized;
@@ -149,7 +165,6 @@ export class GeminiBrowserPanel {
   private getInspectorScript() {
     return `
       (function() {
-        console.log('Gemini Inspector Injected');
         window.__GEMINI_INSPECT_MODE__ = false;
         let hoveredElement = null;
         let overlay = document.createElement('div');
@@ -208,15 +223,11 @@ export class GeminiBrowserPanel {
   }
 
   private handleElementSelected(html: string, url?: string) {
-    // 1. Identify the tag name
     const tagNameMatch = html.match(/^<([a-z0-9]+)/i);
     const tagName = tagNameMatch ? tagNameMatch[1].toLowerCase() : 'element';
-    
-    // 2. Extract inner text for the label
     const textContent = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 30);
     const label = "[" + tagName + ": " + (textContent || '...') + "]";
     
-    // 3. Handle URL mapping
     let displayUrl = url || "unknown";
     try {
       const u = new URL(displayUrl);
@@ -228,13 +239,10 @@ export class GeminiBrowserPanel {
       }
     } catch (e) {}
 
-    // 4. Send the label and use Bracketed Paste for the full context
-    // This triggers the CLI's internal [Pasted text] feature
     GeminiTerminalSession.sendToActiveSessions("\n" + label + "\n");
     
     setTimeout(() => {
         const prompt = "\n[CONTEXT: Browser Selection]\n[URL: " + displayUrl + "]\n```html\n" + html + "\n```\n";
-        // \x1b[200~ is start of bracketed paste, \x1b[201~ is end
         const bracketedPaste = "\x1b[200~" + prompt + "\x1b[201~";
         GeminiTerminalSession.sendToActiveSessions(bracketedPaste + "\n");
     }, 50);
@@ -338,7 +346,8 @@ export class GeminiBrowserPanel {
     `;
   }
 
-  dispose() {
+  public dispose() {
+    GeminiBrowserPanel.currentPanel = undefined;
     this.proxyServer?.close();
     this.panel.dispose();
   }
