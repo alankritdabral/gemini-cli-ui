@@ -29,18 +29,76 @@ type ProxyRequestState = {
   dnsAttempts?: string[];
 };
 
+class CookieManager {
+  private cookies: Map<string, string> = new Map(); // domain -> cookie string
+
+  constructor(private readonly context: vscode.ExtensionContext) {
+    const saved = this.context.globalState.get<Record<string, string>>("gemini.browser.cookies");
+    if (saved) {
+      this.cookies = new Map(Object.entries(saved));
+    }
+  }
+
+  public getCookies(url: URL): string {
+    const domain = url.hostname;
+    let cookieStr = "";
+    for (const [key, value] of this.cookies.entries()) {
+      if (domain.endsWith(key)) {
+        cookieStr += (cookieStr ? "; " : "") + value;
+      }
+    }
+    return cookieStr;
+  }
+
+  public setCookies(url: URL, setCookieHeaders: string[] | string | undefined) {
+    if (!setCookieHeaders) return;
+    const domain = url.hostname;
+    const headers = Array.isArray(setCookieHeaders) ? setCookieHeaders : [setCookieHeaders];
+    
+    let currentCookies = this.cookies.get(domain) || "";
+    const cookieMap = new Map<string, string>();
+    
+    currentCookies.split(";").forEach(c => {
+      const parts = c.trim().split("=");
+      if (parts.length >= 2) {
+        cookieMap.set(parts[0], parts.slice(1).join("="));
+      }
+    });
+
+    headers.forEach(h => {
+      const parts = h.split(";")[0].split("=");
+      if (parts.length >= 2) {
+        cookieMap.set(parts[0].trim(), parts.slice(1).join("=").trim());
+      }
+    });
+
+    const newCookieStr = Array.from(cookieMap.entries()).map(([k, v]) => `${k}=${v}`).join("; ");
+    this.cookies.set(domain, newCookieStr);
+    
+    const toSave: Record<string, string> = {};
+    for (const [k, v] of this.cookies.entries()) {
+      toSave[k] = v;
+    }
+    this.context.globalState.update("gemini.browser.cookies", toSave);
+  }
+}
+
 export class GeminiBrowserPanel {
   public static currentPanel: GeminiBrowserPanel | undefined;
   private readonly panel: vscode.WebviewPanel;
+  private readonly extensionUri: vscode.Uri;
   private currentUrl: string = "http://localhost:3000";
+  private usePlaywright: boolean = false;
   private proxyServer?: http.Server;
   private proxyPort?: number;
   private selectionCounters: Record<string, number> = {};
   private readonly disposeEmitter = new vscode.EventEmitter<void>();
+  private cookieManager: CookieManager;
 
   readonly onDidDispose = this.disposeEmitter.event;
 
-  public static createOrShow(extensionUri: vscode.Uri) {
+  public static createOrShow(context: vscode.ExtensionContext) {
+    const extensionUri = context.extensionUri;
     const column = vscode.window.activeTextEditor
       ? vscode.window.activeTextEditor.viewColumn
       : undefined;
@@ -63,15 +121,17 @@ export class GeminiBrowserPanel {
       }
     );
 
-    GeminiBrowserPanel.currentPanel = new GeminiBrowserPanel(extensionUri, panel);
+    GeminiBrowserPanel.currentPanel = new GeminiBrowserPanel(context, panel);
   }
 
-  constructor(private readonly extensionUri: vscode.Uri, panel: vscode.WebviewPanel) {
+  constructor(private readonly context: vscode.ExtensionContext, panel: vscode.WebviewPanel) {
     this.panel = panel;
+    this.extensionUri = context.extensionUri;
+    this.cookieManager = new CookieManager(context);
 
     this.panel.iconPath = {
-      light: vscode.Uri.joinPath(extensionUri, "media", "gemini-light.svg"),
-      dark: vscode.Uri.joinPath(extensionUri, "media", "gemini-dark.svg")
+      light: vscode.Uri.joinPath(this.extensionUri, "media", "gemini-light.svg"),
+      dark: vscode.Uri.joinPath(this.extensionUri, "media", "gemini-dark.svg")
     };
 
     this.startProxy()
@@ -92,6 +152,12 @@ export class GeminiBrowserPanel {
           break;
         case "browser_element_selected":
           this.handleElementSelected(message.context, message.url);
+          break;
+        case "browser_toggle_playwright":
+          this.usePlaywright = message.enabled;
+          if (this.usePlaywright) {
+            void vscode.window.showInformationMessage("Playwright mode is experimental and currently only scaffolds the toggle.");
+          }
           break;
       }
     });
@@ -123,35 +189,48 @@ export class GeminiBrowserPanel {
 
   private async startProxy() {
     this.proxyServer = http.createServer(async (req, res) => {
-      const urlPath = req.url || "/";
-      console.log(`[BrowserProxy] Incoming request: ${req.method} ${urlPath}`);
+        const urlPath = req.url || "/";
+        console.log(`[BrowserProxy] Incoming request: ${req.method} ${urlPath}`);
 
-      if (!this.currentUrl) {
-        console.error("[BrowserProxy] No currentUrl set");
-        res.writeHead(404);
-        res.end("No URL specified");
-        return;
-      }
-
-      if (urlPath.startsWith("/__gemini_inspector.js")) {
-        res.writeHead(200, { "Content-Type": "application/javascript" });
-        res.end(this.getInspectorScript());
-        return;
-      }
-
-      try {
-        const targetBaseUrl = new URL(this.currentUrl);
-        
-        // Resolve the target URL
-        let targetUrl: URL;
-        if (urlPath === "/" || /^\/\d+\.\d+$/.test(urlPath)) {
-            targetUrl = targetBaseUrl;
-        } else {
-            const cleanPath = urlPath.replace(/^\/\d+\.\d+/, "");
-            targetUrl = new URL(cleanPath || "/", targetBaseUrl.origin);
+        if (!this.currentUrl) {
+          console.error("[BrowserProxy] No currentUrl set");
+          res.writeHead(404);
+          res.end("No URL specified");
+          return;
         }
 
-        console.log(`[BrowserProxy] Target URL resolved: ${targetUrl.href}`);
+        if (urlPath.startsWith("/__gemini_inspector.js")) {
+          res.writeHead(200, { "Content-Type": "application/javascript" });
+          res.end(this.getInspectorScript());
+          return;
+        }
+
+        try {
+          let targetUrl: URL;
+          const absoluteUrlMatch = urlPath.match(/^\/(https?:\/\/.+)/);
+          
+          if (absoluteUrlMatch) {
+            targetUrl = new URL(absoluteUrlMatch[1]);
+          } else if (urlPath === "/" || /^\/\d+\.\d+$/.test(urlPath)) {
+            targetUrl = new URL(this.currentUrl);
+          } else {
+            // Fallback to Referer or currentUrl
+            const referer = req.headers.referer;
+            let baseForRelative = this.currentUrl;
+            if (referer) {
+              try {
+                const refererUrl = new URL(referer);
+                const refererTargetMatch = refererUrl.pathname.match(/^\/(https?:\/\/.+)/);
+                if (refererTargetMatch) {
+                  baseForRelative = refererTargetMatch[1];
+                }
+              } catch {}
+            }
+            const cleanPath = urlPath.replace(/^\/\d+\.\d+/, "");
+            targetUrl = new URL(cleanPath || "/", baseForRelative);
+          }
+
+          console.log(`[BrowserProxy] Target URL resolved: ${targetUrl.href}`);
 
         const fetchWithRedirects = (url: URL, depth = 0): void => {
           if (depth > MAX_PROXY_REDIRECTS) {
@@ -169,6 +248,16 @@ export class GeminiBrowserPanel {
           };
 
           const protocol = url.protocol === "https:" ? https : http;
+          
+          // Forward original headers but override specific ones
+          const forwardedHeaders = { ...req.headers };
+          delete forwardedHeaders["host"];
+          delete forwardedHeaders["connection"];
+          delete forwardedHeaders["cookie"];
+          delete forwardedHeaders["referer"];
+          delete forwardedHeaders["origin"];
+          delete forwardedHeaders["accept-encoding"]; // Force identity to avoid decompression issues
+
           const options: any = {
             hostname: url.hostname,
             port: url.port || (url.protocol === "https:" ? 443 : 80),
@@ -179,10 +268,12 @@ export class GeminiBrowserPanel {
             family: 4,
             lookup: this.createTimedLookup(url, depth, requestState),
             headers: { 
-              "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+              ...forwardedHeaders,
               "accept-encoding": "identity",
-              "accept-language": "en-US,en;q=0.9",
+              "cookie": this.cookieManager.getCookies(url),
               "host": url.host,
+              "origin": url.origin,
+              "referer": url.href,
               "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
           };
@@ -210,6 +301,8 @@ export class GeminiBrowserPanel {
             requestState.responseStartedAt = Date.now();
             console.log(`[BrowserProxy] [Depth ${depth}] Response received in ${duration}ms: ${proxyRes.statusCode} for ${url.href}`);
 
+            this.cookieManager.setCookies(url, proxyRes.headers["set-cookie"]);
+
             // Handle Redirects
             if ([301, 302, 303, 307, 308].includes(proxyRes.statusCode || 0) && proxyRes.headers.location) {
                 finish();
@@ -219,7 +312,7 @@ export class GeminiBrowserPanel {
                       location = new URL(location, url.origin).href;
                   }
                   console.log(`[BrowserProxy] [Depth ${depth}] Redirecting to: ${location}`);
-                  if (url.href === targetBaseUrl.href) {
+                  if (url.href === this.currentUrl) {
                       this.currentUrl = location;
                   }
                   proxyRes.resume();
@@ -247,7 +340,7 @@ export class GeminiBrowserPanel {
             headers["access-control-allow-methods"] = "*";
             headers["access-control-allow-headers"] = "*";
 
-            if (contentType.includes("text/html")) {
+            if (contentType.includes("text/html") || contentType.includes("text/css")) {
               let chunks: Buffer[] = [];
               proxyRes.on("data", (chunk: Buffer) => { chunks.push(chunk); });
               proxyRes.on("end", () => {
@@ -257,18 +350,12 @@ export class GeminiBrowserPanel {
 
                 requestState.phase = "complete";
                 let body = Buffer.concat(chunks).toString();
-                const injection = '<script src="/__gemini_inspector.js"></script>';
-                if (body.includes("<head>")) {
-                  body = body.replace("<head>", `<head>${injection}`);
-                } else if (body.includes("<html>")) {
-                  body = body.replace("<html>", `<html>${injection}`);
-                } else {
-                  body = injection + body;
-                }
+                body = this.rewriteUrls(body, contentType, url);
+                
                 finish();
                 res.writeHead(proxyRes.statusCode || 200, headers);
                 res.end(body);
-                console.log(`[BrowserProxy] [Depth ${depth}] HTML response sent for ${url.href}`);
+                console.log(`[BrowserProxy] [Depth ${depth}] ${contentType} response sent for ${url.href}`);
               });
             } else {
               requestState.phase = "streaming response";
@@ -696,12 +783,111 @@ export class GeminiBrowserPanel {
     return error instanceof Error ? error.message : String(error);
   }
 
+  private rewriteUrls(content: string, contentType: string, targetUrl: URL): string {
+    const proxyBase = `http://127.0.0.1:${this.proxyPort}`;
+    
+    if (contentType.includes("text/html")) {
+      const injection = '<script src="/__gemini_inspector.js"></script>';
+      let body = content;
+      if (body.includes("<head>")) {
+        body = body.replace("<head>", `<head>${injection}`);
+      } else if (body.includes("<html>")) {
+        body = body.replace("<html>", `<html>${injection}`);
+      } else {
+        body = injection + body;
+      }
+
+      // Rewrite href, src, action
+      body = body.replace(/(href|src|action)=["']([^"']+)["']/gi, (match, attr, url) => {
+        if (url.startsWith("data:") || url.startsWith("#") || url.startsWith("javascript:") || (url.startsWith("/") && url.includes("/__gemini_inspector.js"))) {
+          return match;
+        }
+        try {
+          const absoluteUrl = new URL(url, targetUrl).href;
+          return `${attr}="${proxyBase}/${absoluteUrl}"`;
+        } catch {
+          return match;
+        }
+      });
+
+      // Rewrite srcset
+      body = body.replace(/srcset=["']([^"']+)["']/gi, (match, urls) => {
+        const rewritten = urls.split(',').map((part: string) => {
+          const [url, ...desc] = part.trim().split(/\s+/);
+          try {
+            return `${proxyBase}/${new URL(url, targetUrl).href} ${desc.join(' ')}`.trim();
+          } catch {
+            return part;
+          }
+        }).join(', ');
+        return `srcset="${rewritten}"`;
+      });
+
+      return body;
+    } else if (contentType.includes("text/css")) {
+      return content.replace(/url\(["']?([^"'\)]+)["']?\)/gi, (match, url) => {
+        if (url.startsWith("data:")) return match;
+        try {
+          const absoluteUrl = new URL(url, targetUrl).href;
+          return `url("${proxyBase}/${absoluteUrl}")`;
+        } catch {
+          return match;
+        }
+      });
+    }
+    return content;
+  }
+
   private getInspectorScript() {
     return `
       (function() {
         window.__GEMINI_INSPECT_MODE__ = false;
         let hoveredElement = null;
         let overlay = null;
+
+        // Patch fetch and XHR to route through proxy
+        const originalFetch = window.fetch;
+        window.fetch = function(input, init) {
+          let url;
+          if (typeof input === 'string') url = input;
+          else if (input instanceof URL) url = input.href;
+          else if (input && input.url) url = input.url;
+
+          if (typeof url === 'string' && !url.startsWith('data:') && !url.startsWith('blob:') && !url.startsWith(window.location.origin)) {
+            let newUrl = url;
+            if (!url.startsWith('http') && !url.startsWith('//')) {
+              const targetUrlStr = window.location.pathname.substring(1) + window.location.search;
+              try {
+                const targetBase = new URL(targetUrlStr);
+                newUrl = new URL(url, targetBase).href;
+              } catch(e) {}
+            }
+            newUrl = window.location.origin + '/' + newUrl;
+            
+            if (typeof input === 'string') input = newUrl;
+            else if (input instanceof URL) input = new URL(newUrl);
+            else {
+              try { input = new Request(newUrl, input); } catch(e) { input = newUrl; }
+            }
+          }
+          return originalFetch(input, init);
+        };
+
+        const originalXhrOpen = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function(method, url) {
+          if (typeof url === 'string' && !url.startsWith('data:') && !url.startsWith('blob:') && !url.startsWith(window.location.origin)) {
+            let newUrl = url;
+            if (!url.startsWith('http') && !url.startsWith('//')) {
+              const targetUrlStr = window.location.pathname.substring(1) + window.location.search;
+              try {
+                const targetBase = new URL(targetUrlStr);
+                newUrl = new URL(url, targetBase).href;
+              } catch(e) {}
+            }
+            url = window.location.origin + '/' + newUrl;
+          }
+          return originalXhrOpen.apply(this, arguments);
+        };
 
         function init() {
           if (document.getElementById('gemini-inspector-overlay')) return;
@@ -838,6 +1024,7 @@ export class GeminiBrowserPanel {
             <input type="text" id="urlInput" value="${this.currentUrl}" placeholder="Enter any URL (e.g. google.com)">
             <button id="go">Go</button>
             <button id="inspect" title="Inspect Element">🔍</button>
+            <button id="playwright" title="Use Playwright (Experimental)" class="${this.usePlaywright ? 'active' : ''}">🎭</button>
           </div>
           <iframe id="browserFrame" class="browser-content" src="${proxyUrl}"></iframe>
         </div>
@@ -848,8 +1035,16 @@ export class GeminiBrowserPanel {
           const goBtn = document.getElementById('go');
           const refreshBtn = document.getElementById('refresh');
           const inspectBtn = document.getElementById('inspect');
+          const playwrightBtn = document.getElementById('playwright');
 
           let isInspectMode = false;
+          let isPlaywright = ${this.usePlaywright};
+
+          playwrightBtn.onclick = () => {
+            isPlaywright = !isPlaywright;
+            playwrightBtn.classList.toggle('active', isPlaywright);
+            vscode.postMessage({ type: 'browser_toggle_playwright', enabled: isPlaywright });
+          };
 
           inspectBtn.onclick = () => {
             isInspectMode = !isInspectMode;

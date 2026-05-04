@@ -33,8 +33,16 @@ The goal was to eliminate context switching between VS Code and external browser
 **The Solution:** We added **Fail-Fast Network Diagnostics** and a **Layered DNS Resolver** to the browser proxy. The proxy now reports whether a request is stuck in DNS, TCP connect, TLS, or response wait. For external hosts, it avoids relying on only `dns.lookup` and falls back through Node c-ares `dns.resolve4`, public DNS servers, and DNS-over-HTTPS to `1.1.1.1`. This bypasses the slow/broken resolver path in the Snap extension host and keeps the request inside VS Code's response budget.
 
 ### Problem G: CORS & Browser Security Limits
-**The Issue:** The proxy currently strips common blocking headers and injects the inspector script, which works for many local apps and simple pages. It does not fully emulate a browser, though. Some sites still fail because their JavaScript performs API calls against the original origin, uses strict CSP, checks `Origin`/`Referer`, depends on cookies, uses service workers, locks assets behind CORS, or builds absolute URLs that escape the proxy.
-**The Planned Solution:** Move from a simple header-stripping proxy to a **Full Rewrite Proxy**. HTML, CSS, JavaScript entry points, fetch/XHR calls, redirects, cookies, and asset URLs should be rewritten so every subrequest flows back through the extension proxy under one controlled origin. For sites that cannot safely be rewritten, the browser should fall back to a real browser automation mode, such as Playwright or the VS Code simple browser style, instead of pretending that CORS can always be bypassed.
+**The Issue:** The proxy originally stripped common blocking headers and injected the inspector script, which worked for local apps but failed on complex external sites. Sites would break because their JavaScript performed API calls against real origins, assets escaped the proxy, and absolute URLs bypassed our control, triggering CORS and CSP blocks.
+**The Solution:** We moved to a **Full Rewrite Proxy with Runtime Patching**. The proxy now uses Regex to rewrite `href`, `src`, `action`, and `srcset` in HTML, and `url()` in CSS. We also use the `Referer` header to handle un-rewritten relative paths, ensuring sub-resources stay within the proxy's controlled origin.
+
+### Problem H: Persistent Sessions and Broken API Requests
+**The Issue:** Users couldn't stay logged into sites because cookies weren't managed, and backends often failed to parse POST requests (e.g., `req.body` undefined) because essential headers like `Content-Type` were being stripped. Additionally, absolute `fetch` calls in JS would bypass the proxy entirely.
+**The Solution:** We implemented a **Persistent Cookie Jar and Smart Header Forwarding**.
+- **CookieManager**: A custom class that intercepts `Set-Cookie` and injects `Cookie` headers, persisting them to VS Code's `globalState` so sessions survive restarts.
+- **API Monkey-patching**: The injected script now patches `window.fetch` and `XMLHttpRequest` to intercept and rewrite both relative and absolute URLs at runtime.
+- **Transparent Header Forwarding**: The proxy now merges original request headers (preserving `Content-Type`, etc.) into the proxied request while overriding security-sensitive ones.
+- **Playwright Fallback**: Added a "Use Playwright" toggle (🎭) to the toolbar for handling extremely resilient sites via automation.
 
 ## 3. Key Technical Milestones
 - **Bridge Architecture**: Created a type-safe messaging protocol between the Extension Host, the Webview Shell, and the injected Iframe script.
@@ -42,7 +50,9 @@ The goal was to eliminate context switching between VS Code and external browser
 - **Smart Labeling**: Developed a tag-parsing engine that automatically generates friendly names (e.g., `para1`, `button2`) for captured elements.
 - **Session Instance Management**: Developed a robust PTY session lifecycle that handles rapid restarts and input buffering to prevent data loss during transitions.
 - **Layered DNS Resolution**: Added DNS diagnostics and fallback resolvers so Snap-hosted VS Code extension processes can still resolve external domains.
-- **Proxy Hardening Plan**: Documented the path from header stripping toward a full rewrite proxy for better CORS and asset handling.
+- **Comprehensive Rewrite Proxy**: Implemented a system that transparently handles URL rewriting and API patching for CORS evasion.
+- **Stateful Browsing**: Integrated persistent cookie management into the proxy lifecycle using VS Code storage.
+- **Transparent Header Forwarding**: Refined the proxy to preserve essential metadata headers, fixing backend parsing issues.
 
 ## 4. Final Result
-A fully functional, AI-integrated browser that allows users to "point and click" on their UI to give the Gemini agent the exact context it needs to fix bugs or build features.
+A fully functional, AI-integrated browser that allows users to "point and click" on their UI to give the Gemini agent the exact context it needs to fix bugs or build features. It effectively evades CORS, manages persistent sessions, and handles complex modern web applications seamlessly.

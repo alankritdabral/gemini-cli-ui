@@ -14,6 +14,7 @@ export type WebviewToExtensionMessage =
   | { type: "browser_refresh" }
   | { type: "browser_back" }
   | { type: "browser_forward" }
+  | { type: "browser_toggle_playwright"; enabled: boolean }
   | { type: "browser_element_selected"; context: string; url?: string };
 
 export type ExtensionToBrowserMessage =
