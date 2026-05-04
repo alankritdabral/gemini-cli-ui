@@ -2,7 +2,7 @@
   "name": "gemini-cli-ui",
   "displayName": "Gemini CLI UI",
   "icon": "media/gemini-cli-ui.jpg",
-  "description": "Run the Gemini CLI in a real PTY-backed xterm.js terminal inside VS Code.",
+  "description": "The ultimate AI-powered workspace: A PTY-backed Gemini CLI terminal with an intelligent, CORS-evading browser for seamless AI-integrated web development.",
   "version": "0.1.9",
   "publisher": "AlankritDabral",
   "license": "MIT",

@@ -1,72 +1,61 @@
-# Gemini CLI UI
+# 🚀 Gemini CLI UI
 
-Gemini CLI UI is a VS Code extension that brings the power of the [Gemini CLI](https://github.com/google/gemini-cli) directly into your editor. It provides a real PTY-backed terminal experience within a dedicated sidebar chat or a full editor panel.
+### The Ultimate AI-Powered Workspace for VS Code
+
+**Gemini CLI UI** is a next-generation developer tool that bridges the gap between your terminal, your editor, and your browser. It brings the full intelligence of the [Gemini CLI](https://github.com/google/gemini-cli) into a native VS Code experience, supercharged with an AI-integrated browser.
 
 ![Gemini CLI UI](media/gemini-cli-ui.jpg)
 
-## Features
+---
 
-- **Sidebar Chat View**: Access the Gemini CLI from a convenient sidebar, allowing you to chat without leaving your code.
-- **Gemini Browser**: A native, in-app browser for previewing your web applications directly inside VS Code.
-- **Element Inspector (Cursor Style)**: Click UI components in the Gemini Browser to automatically send their HTML and URL context to the AI chat.
-- **PTY-Backed Terminal**: Uses `node-pty` and `xterm.js` for an authentic terminal experience, supporting interactive commands and full-color output.
-- **Smart Node.js Detection**: Automatically finds the best Node.js version on your system (supporting NVM, Volta, fnm, etc.) to run the CLI.
-- **Cross-Platform**: Works on Windows (PowerShell), macOS, and Linux (Bash).
-- **Responsive Design**: UI scales perfectly for both the sidebar and full editor views.
+## ✨ Key Features
 
-## Requirements
+### 🖥️ PTY-Backed AI Terminal
+*   **Authentic Experience**: A real terminal powered by `node-pty` and `xterm.js`.
+*   **Interactive & Colorful**: Full support for ANSI colors, interactive CLI prompts, and raw shell output.
+*   **Smart Environment**: Automatically detects your Node.js environment (NVM, Volta, fnm) to ensure Gemini always runs smoothly.
 
-- **Node.js**: Version 20 or higher.
-- **Gemini CLI**: The extension will automatically try to use your global `gemini` installation or run it via `npx @google/gemini-cli`.
+### 🌐 AI-Integrated "Sensor" Browser
+*   **CORS-Evading Proxy**: A sophisticated rewrite proxy that evades CORS and CSP restrictions, allowing you to browse any site (even complex React/Next.js apps) without leaving VS Code.
+*   **🔍 Cursor-Style Inspector**: Click any UI element in the browser to instantly capture its HTML context and URL, sending it directly to the AI to fix bugs or implement features.
+*   **⚡ Runtime API Patching**: Automatically intercepts and proxies `fetch` and `XMLHttpRequest` calls, ensuring that dynamic APIs and absolute URLs work perfectly within the editor.
+*   **🍪 Stateful Browsing**: Integrated persistent cookie management that saves your login sessions to VS Code's global storage—sessions survive editor restarts!
+*   **🎭 Playwright Fallback**: Experimental support for full browser automation for the most resilient sites.
 
-## Installation
+### 🧩 Seamless Integration
+*   **Sidebar Chat**: A convenient chat view for quick questions and code generation.
+*   **Bracketed Paste**: Sends rich code context to the AI using clean, summarized labels in your terminal.
+*   **Cross-Platform**: Optimized for macOS, Windows (PowerShell/CMD), and Linux (including Snap builds with a custom DNS resolver).
+
+---
+
+## 🛠️ Installation
 
 1. Open VS Code.
-2. Go to the Extensions view (`Ctrl+Shift+X`).
-3. Search for `Gemini CLI UI` (or install from VSIX).
-4. Click Install.
+2. Go to the **Extensions** view (`Ctrl+Shift+X`).
+3. Search for **Gemini CLI UI**.
+4. Click **Install**.
 
-## Usage
+## 🚀 Quick Start
 
-### Sidebar Chat
-1. Click on the **Gemini** icon in the Activity Bar.
-2. The Gemini CLI will automatically start.
-3. Type your prompts and interact with the CLI as you would in a normal terminal.
+### 💬 Start Chatting
+Click the **Gemini** icon in the Activity Bar. The CLI starts automatically.
 
-### Editor Terminal
-1. Open the Command Palette (`Ctrl+Shift+P`).
-2. Run the command **Gemini: Open Gemini CLI UI**.
-3. A new editor tab will open with the Gemini terminal.
+### 🔍 Inspect Your App
+1. Launch the **Gemini Browser** from the Sidebar.
+2. Enter your URL (e.g., `http://localhost:3000`).
+3. Toggle the **🔍 (Inspect)** mode.
+4. Click any element to send its code context to the AI.
 
-### Gemini Browser
-1. Click the **Browser** button in the Gemini Sidebar (next to History).
-2. Enter your application URL (e.g., `localhost:3000`) and click **Go**.
-3. Click the **🔍 (Inspect)** icon to enter Selection Mode.
-4. Click any element on the page to send its code and URL context directly to the Gemini AI.
+## ⚙️ Requirements
+- **Node.js**: v20 or higher.
+- **Gemini CLI**: Automatically uses your global install or `npx @google/gemini-cli`.
 
-## Development
+---
 
-If you want to contribute or build the extension from source:
-
-### Setup
-```bash
-# Install dependencies
-npm install
-```
-
-### Build
-```bash
-# Compile the extension
-npm run compile
-
-# Watch for changes
-npm run watch
-```
-
-### Run
-1. Press `F5` in VS Code to open a new window with the extension loaded.
-2. Run your commands in the [Extension Development Host] window.
-
-## License
+## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+*Built with ❤️ for the AI-first developer.*
