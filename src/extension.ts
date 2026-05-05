@@ -1,10 +1,6 @@
 import * as vscode from "vscode";
 import { GeminiChatViewProvider } from "./views/chatView";
-import { GeminiTerminalPanel } from "./views/terminalPanel";
 import { GeminiBrowserPanel } from "./views/browserPanel";
-
-const activeTerminalSessions = new Set<GeminiTerminalPanel>();
-const activeBrowserSessions = new Set<GeminiBrowserPanel>();
 
 export function activate(context: vscode.ExtensionContext) {
   const chatProvider = new GeminiChatViewProvider(context.extensionUri);
@@ -16,52 +12,23 @@ export function activate(context: vscode.ExtensionContext) {
       }
     }),
     vscode.commands.registerCommand("geminiTerminal.open", () => {
-      const panel = new GeminiTerminalPanel(context.extensionUri);
-      activeTerminalSessions.add(panel);
-      panel.onDidDispose(() => activeTerminalSessions.delete(panel));
+      void vscode.commands.executeCommand("gemini.chatView.focus");
     }),
     vscode.commands.registerCommand("gemini.browser.open", () => {
       GeminiBrowserPanel.createOrShow(context);
     }),
     vscode.commands.registerCommand("gemini.browser.navigate", (url: string) => {
+      GeminiBrowserPanel.createOrShow(context);
       GeminiBrowserPanel.currentPanel?.navigate(url);
-    }),
-    vscode.window.registerWebviewPanelSerializer("geminiTerminal", {
-      async deserializeWebviewPanel(webviewPanel: vscode.WebviewPanel) {
-        const panel = new GeminiTerminalPanel(context.extensionUri, webviewPanel);
-        activeTerminalSessions.add(panel);
-        panel.onDidDispose(() => activeTerminalSessions.delete(panel));
-      }
     }),
     vscode.window.registerWebviewPanelSerializer("geminiBrowser", {
       async deserializeWebviewPanel(webviewPanel: vscode.WebviewPanel) {
         const panel = new GeminiBrowserPanel(context, webviewPanel);
-        activeBrowserSessions.add(panel);
-        panel.onDidDispose(() => activeBrowserSessions.delete(panel));
+        GeminiBrowserPanel.currentPanel = panel;
       }
-    }),
-    {
-      dispose: () => {
-        for (const session of activeTerminalSessions) {
-          session.dispose();
-        }
-        activeTerminalSessions.clear();
-        for (const session of activeBrowserSessions) {
-          session.dispose();
-        }
-        activeBrowserSessions.clear();
-      }
-    }
+    })
   );
 }
 
 export function deactivate() {
-  for (const session of activeTerminalSessions) {
-    session.dispose();
-  }
-  activeTerminalSessions.clear();
-  for (const session of activeBrowserSessions) {
-    session.dispose();
-  }
-  activeBrowserSessions.clear();
 }

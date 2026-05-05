@@ -63,7 +63,7 @@ export class GeminiTerminalSession {
   private handleWebviewMessage(message: WebviewToExtensionMessage) {
     switch (message.type) {
       case "ready":
-        this.startTerminalProcess();
+        void this.startWithLatestSession();
         break;
       case "input":
         if (this.terminalProcess) {
@@ -91,6 +91,38 @@ export class GeminiTerminalSession {
         void vscode.commands.executeCommand("gemini.browser.open");
         break;
     }
+  }
+
+  private async startWithLatestSession() {
+    const options = this.getPtyOptions();
+    const command = process.platform === "win32" ? "gemini --list-sessions" : "bash -lc 'gemini --list-sessions'";
+    
+    cp.exec(command, { cwd: options.cwd, env: options.env }, (error, stdout) => {
+      let latestId: string | undefined;
+      
+      const processOutput = (output: string) => {
+        const lines = output.split("\n");
+        const regex = /\[([a-fA-F0-9-]+)\]\s*$/;
+        // Sessions are usually listed in order, newest at the end
+        for (let i = lines.length - 1; i >= 0; i--) {
+          const match = lines[i].trim().match(regex);
+          if (match) {
+            latestId = match[1];
+            break;
+          }
+        }
+        this.startTerminalProcess(latestId || true);
+      };
+
+      if (error) {
+        const npxCommand = process.platform === "win32" ? "npx -y @google/gemini-cli --list-sessions" : "bash -lc 'npx -y @google/gemini-cli --list-sessions'";
+        cp.exec(npxCommand, { cwd: options.cwd, env: options.env }, (npxError, npxStdout) => {
+          processOutput(npxStdout || "");
+        });
+        return;
+      }
+      processOutput(stdout);
+    });
   }
 
   private async showSessionPicker() {
@@ -310,16 +342,12 @@ export class GeminiTerminalSession {
 
   private handleTerminalData(data: string) {
     // Basic regex to detect browser commands in the stream
-    // Pattern: <<BROWSER_COMMAND:ARGS>>
+    // Pattern: <<BROWSER_NAVIGATE:(.*?)>>
     const navigateMatch = data.match(/<<BROWSER_NAVIGATE:(.*?)>>/);
     if (navigateMatch) {
       const url = navigateMatch[1].trim();
       void vscode.commands.executeCommand("gemini.browser.navigate", url);
-      
-      // Notify the user via a less intrusive message if browser isn't open
-      if (!GeminiBrowserPanel.currentPanel) {
-         void vscode.window.showInformationMessage(`Gemini suggested navigating to ${url}. Click "Browser" to see it.`);
-      }
+      void vscode.window.showInformationMessage(`Gemini suggested navigating to ${url}. Check the new Browser tab in the editor area.`);
     }
   }
 }

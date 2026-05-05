@@ -34,6 +34,17 @@
           <button id="newChatButton" type="button" title="Start a fresh Gemini CLI session">
             <span class="btn-text">New Chat</span>
           </button>
+          
+          <div class="dropdown more-actions">
+            <button id="moreActionsButton" type="button" title="More Actions">
+              <span>⋮</span>
+            </button>
+            <div id="moreActionsDropdown" class="dropdown-content">
+              <button id="moreHistoryButton" type="button">History</button>
+              <button id="moreBrowserButton" type="button">Browser</button>
+              <button id="moreNewChatButton" type="button">New Chat</button>
+            </div>
+          </div>
         </div>
       </div>
       <div id="terminal" class="terminal" aria-label="Gemini CLI"></div>

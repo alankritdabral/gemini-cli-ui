@@ -3,7 +3,7 @@
   "displayName": "Gemini CLI UI",
   "icon": "media/gemini-cli-ui.jpg",
   "description": "The ultimate AI-powered workspace: A PTY-backed Gemini CLI terminal with an intelligent, CORS-evading browser for seamless AI-integrated web development.",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "publisher": "AlankritDabral",
   "license": "MIT",
   "repository": {
@@ -45,7 +45,8 @@
         {
           "type": "webview",
           "id": "gemini.chatView",
-          "name": "Chat"
+          "name": "gemini-cli",
+          "icon": "media/gemini-light.svg"
         }
       ]
     },
