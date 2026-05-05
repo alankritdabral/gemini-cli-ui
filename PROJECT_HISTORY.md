@@ -53,6 +53,7 @@ The goal was to eliminate context switching between VS Code and external browser
 - **Comprehensive Rewrite Proxy**: Implemented a system that transparently handles URL rewriting and API patching for CORS evasion.
 - **Stateful Browsing**: Integrated persistent cookie management into the proxy lifecycle using VS Code storage.
 - **Transparent Header Forwarding**: Refined the proxy to preserve essential metadata headers, fixing backend parsing issues.
+- **Drag-and-Drop Removal**: Decided to remove the drag-and-drop file injection feature. While convenient, standard browser and webview security sandboxes made it impossible to reliably extract absolute file paths across all platforms and VS Code distributions (e.g., Snap), often providing only filenames which lacked the context required for the AI to read the files. Users should use the "Add File" button or the terminal's native file handling instead.
 
 ## 4. Final Result
 A fully functional, AI-integrated browser that allows users to "point and click" on their UI to give the Gemini agent the exact context it needs to fix bugs or build features. It effectively evades CORS, manages persistent sessions, and handles complex modern web applications seamlessly.

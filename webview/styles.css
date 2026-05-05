@@ -225,7 +225,7 @@ button {
 }
 
 @media (max-width: 340px) {
-  #historyButton, #browserButton, #newChatButton {
+  #historyButton, #addFileButton, #browserButton, #newChatButton {
     display: none;
   }
   
@@ -268,6 +268,12 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
+body.drag-over {
+  background-color: rgba(88, 166, 255, 0.05);
+  outline: 2px solid #58a6ff;
+  outline-offset: -2px;
+}
+
 .terminal {
   flex: 1 1 0;
   min-width: 0;
@@ -275,6 +281,13 @@ button:focus-visible {
   padding: 0;
   overflow: hidden; /* Ensure terminal clips instead of pushing layout */
   outline: none;
+  transition: border 0.2s, background-color 0.2s;
+  border: 2px solid transparent;
+}
+
+.terminal.drag-over {
+  border: 2px solid #58a6ff;
+  background-color: rgba(88, 166, 255, 0.1);
 }
 
 .xterm {

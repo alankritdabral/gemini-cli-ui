@@ -1,15 +1,17 @@
 (function () {
   const vscode = acquireVsCodeApi();
-  const terminalElement = document.getElementById("terminal");
+  const terminalElement = document.getElementById("terminal") || document.querySelector(".terminal");
   const statusText = document.getElementById("statusText");
   const statusContainer = document.getElementById("statusContainer");
   const newChatButton = document.getElementById("newChatButton");
+  const addFileButton = document.getElementById("addFileButton");
   const historyButton = document.getElementById("historyButton");
   const historyDropdown = document.getElementById("historyDropdown");
   const browserButton = document.getElementById("browserButton");
   const moreActionsButton = document.getElementById("moreActionsButton");
   const moreActionsDropdown = document.getElementById("moreActionsDropdown");
   const moreHistoryButton = document.getElementById("moreHistoryButton");
+  const moreAddFileButton = document.getElementById("moreAddFileButton");
   const moreBrowserButton = document.getElementById("moreBrowserButton");
   const moreNewChatButton = document.getElementById("moreNewChatButton");
 
@@ -67,6 +69,19 @@
     const isPaste = (event.ctrlKey || event.metaKey) && event.key === "v";
     if (isPaste) {
       return false; // Let browser handle it (triggers paste event)
+    }
+
+    // Copy handling: Ctrl+C (Windows/Linux) or Cmd+C (Mac)
+    const isCopy = (event.ctrlKey || event.metaKey) && event.key === "c";
+    if (isCopy && terminal.hasSelection()) {
+      const selectedText = terminal.getSelection();
+      if (selectedText) {
+        navigator.clipboard.writeText(selectedText).catch(() => {
+          // Fallback if clipboard API fails
+          document.execCommand("copy");
+        });
+      }
+      return false; // Don't send ^C to terminal
     }
 
     // Custom shortcuts: Ctrl+Alt+[Key]
@@ -236,6 +251,10 @@
     startAction("newChat", "Starting New Chat");
   });
 
+  addFileButton.addEventListener("click", () => {
+    vscode.postMessage({ type: "addFile" });
+  });
+
   browserButton.addEventListener("click", () => {
     vscode.postMessage({ type: "browser_switch" });
   });
@@ -259,6 +278,11 @@
 
   moreHistoryButton.addEventListener("click", () => {
     historyButton.click();
+    moreActionsDropdown.classList.remove("show");
+  });
+
+  moreAddFileButton.addEventListener("click", () => {
+    addFileButton.click();
     moreActionsDropdown.classList.remove("show");
   });
 
@@ -304,6 +328,9 @@
       case "exit":
         setLoading(false);
         setStatus(`Gemini CLI exited (${formatExit(message)})`);
+        break;
+      case "focus":
+        terminal.focus();
         break;
     }
   });

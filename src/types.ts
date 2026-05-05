@@ -8,6 +8,8 @@ export type WebviewToExtensionMessage =
   | { type: "newChat" }
   | { type: "listSessions" }
   | { type: "resumeSession"; id: string }
+  | { type: "addFile" }
+  | { type: "filesDropped"; files: { path: string; name: string }[] }
   | { type: "browser_switch" }
   | { type: "browser_inspect_mode"; enabled: boolean }
   | { type: "browser_navigate"; url: string }

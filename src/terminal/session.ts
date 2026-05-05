@@ -18,6 +18,7 @@ export class GeminiTerminalSession {
 
   private static readonly activeSessions = new Set<GeminiTerminalSession>();
   private readonly disposables: vscode.Disposable[] = [];
+  private readonly injectedFiles = new Set<string>();
   private terminalProcess: NodePty.IPty | undefined;
   private inputBuffer: string[] = [];
   private isStarting = false;
@@ -87,10 +88,64 @@ export class GeminiTerminalSession {
       case "resumeSession":
         this.restartTerminalProcess(message.id);
         break;
+      case "addFile":
+        void this.handleAddFile();
+        break;
       case "browser_switch":
         void vscode.commands.executeCommand("gemini.browser.open");
         break;
     }
+  }
+
+  private async handleAddFile() {
+    const files = await vscode.window.showOpenDialog({
+      canSelectFiles: true,
+      canSelectFolders: false,
+      canSelectMany: true,
+      openLabel: "Add to Gemini Chat"
+    });
+
+    if (files && files.length > 0) {
+      this.injectFiles(files.map(f => ({ path: f.fsPath, name: path.basename(f.fsPath) })));
+    }
+  }
+
+  private injectFiles(files: { path: string; name: string }[]) {
+    if (!this.terminalProcess || files.length === 0) {
+      return;
+    }
+
+    // Deduplicate within the current selection and against already injected files
+    const uniqueFiles = files.filter((file, index, self) => {
+      const isFirstInSelection = self.findIndex(f => f.path === file.path) === index;
+      const hasNotBeenInjected = !this.injectedFiles.has(file.path);
+      return isFirstInSelection && hasNotBeenInjected;
+    });
+
+    if (uniqueFiles.length === 0) {
+      void vscode.window.showInformationMessage("Selected file(s) are already in the chat context.");
+      return;
+    }
+
+    const fileList = uniqueFiles.map(f => f.name).join(", ");
+    void vscode.window.showInformationMessage(`Adding files: ${fileList}`);
+
+    // Small delay to ensure any existing terminal input is settled
+    setTimeout(() => {
+      for (const file of uniqueFiles) {
+        // Format: [File Attached: /path/to/file] [filename]
+        // Adding \n at the end to "submit" it to the terminal buffer
+        const data = `\x1b[200~[File Attached: ${file.path}] [${file.name}]\x1b[201~\n`;
+        this.terminalProcess?.write(data);
+        this.injectedFiles.add(file.path);
+      }
+      
+      // Ensure the webview regains focus after injection
+      setTimeout(() => {
+        void this.webview.postMessage({ type: "focus" });
+        void vscode.window.showInformationMessage(`Injected ${uniqueFiles.length} new file(s) into Gemini CLI.`);
+      }, 100);
+    }, 50);
   }
 
   private async startWithLatestSession() {
@@ -182,6 +237,7 @@ export class GeminiTerminalSession {
     }
 
     this.killTerminalProcess();
+    this.injectedFiles.clear();
     
     if (this.startupTimeout) {
       clearTimeout(this.startupTimeout);
@@ -341,13 +397,6 @@ export class GeminiTerminalSession {
   }
 
   private handleTerminalData(data: string) {
-    // Basic regex to detect browser commands in the stream
-    // Pattern: <<BROWSER_NAVIGATE:(.*?)>>
-    const navigateMatch = data.match(/<<BROWSER_NAVIGATE:(.*?)>>/);
-    if (navigateMatch) {
-      const url = navigateMatch[1].trim();
-      void vscode.commands.executeCommand("gemini.browser.navigate", url);
-      void vscode.window.showInformationMessage(`Gemini suggested navigating to ${url}. Check the new Browser tab in the editor area.`);
-    }
+    // Browser navigation detection removed per user request
   }
 }
