@@ -86,7 +86,16 @@ export class GeminiTerminalSession {
         void this.showSessionPicker();
         break;
       case "resumeSession":
-        this.restartTerminalProcess(message.id);
+        // 1. Immediately clear the webview UI to feel "instant"
+        void this.webview.postMessage({ type: "clear" });
+        
+        if (this.terminalProcess) {
+          // 2. Kill the old process
+          this.killTerminalProcess();
+          this.startTerminalProcess(message.id);
+        } else {
+          this.startTerminalProcess(message.id);
+        }
         break;
       case "addFile":
         void this.handleAddFile();
@@ -130,22 +139,17 @@ export class GeminiTerminalSession {
     const fileList = uniqueFiles.map(f => f.name).join(", ");
     void vscode.window.showInformationMessage(`Adding files: ${fileList}`);
 
-    // Small delay to ensure any existing terminal input is settled
-    setTimeout(() => {
-      for (const file of uniqueFiles) {
-        // Format: [File Attached: /path/to/file] [filename]
-        // Adding \n at the end to "submit" it to the terminal buffer
-        const data = `\x1b[200~[File Attached: ${file.path}] [${file.name}]\x1b[201~\n`;
-        this.terminalProcess?.write(data);
-        this.injectedFiles.add(file.path);
-      }
-      
-      // Ensure the webview regains focus after injection
-      setTimeout(() => {
-        void this.webview.postMessage({ type: "focus" });
-        void vscode.window.showInformationMessage(`Injected ${uniqueFiles.length} new file(s) into Gemini CLI.`);
-      }, 100);
-    }, 50);
+    for (const file of uniqueFiles) {
+      // Format: [File Attached: /path/to/file] [filename]
+      // Adding \n at the end to "submit" it to the terminal buffer
+      const data = `\x1b[200~[File Attached: ${file.path}] [${file.name}]\x1b[201~\n`;
+      this.terminalProcess?.write(data);
+      this.injectedFiles.add(file.path);
+    }
+    
+    // Ensure the webview regains focus after injection
+    void this.webview.postMessage({ type: "focus" });
+    void vscode.window.showInformationMessage(`Injected ${uniqueFiles.length} new file(s) into Gemini CLI.`);
   }
 
   private async startWithLatestSession() {
@@ -294,6 +298,13 @@ export class GeminiTerminalSession {
         ptyProcess.write(bufferedInput);
       }
       
+      // Auto-enable mouse mode if configured
+      if (vscode.workspace.getConfiguration("gemini.terminal").get("enableMouseMode")) {
+        if (this.terminalProcess === ptyProcess) {
+          this.terminalProcess.write("\x13"); // Send Ctrl+S
+        }
+      }
+
       this.isStarting = false;
       if (this.startupTimeout) {
         clearTimeout(this.startupTimeout);
