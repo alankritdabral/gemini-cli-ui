@@ -6,7 +6,7 @@ export type WebviewToExtensionMessage =
   | { type: "resize"; cols: number; rows: number }
   | { type: "restart" }
   | { type: "newChat" }
-  | { type: "listSessions" }
+  | { type: "listSessions"; query?: string }
   | { type: "resumeSession"; id: string }
   | { type: "addFile" }
   | { type: "filesDropped"; files: { path: string; name: string }[] }

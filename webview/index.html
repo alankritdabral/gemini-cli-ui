@@ -34,7 +34,9 @@
               <span class="btn-text">History</span>
             </button>
             <div id="historyDropdown" class="dropdown-content">
-              <!-- Sessions will be populated here -->
+              <div id="historyListDropdown" class="history-list">
+                <!-- Sessions will be populated here -->
+              </div>
             </div>
           </div>
           <button id="newChatButton" type="button" title="Clear current chat">
@@ -52,6 +54,25 @@
               <button id="moreNewChatButton" type="button">New Chat</button>
             </div>
           </div>
+        </div>
+      </div>
+      <div id="historyView" class="history-view">
+        <div class="history-header">
+          <div id="historyQuotas" class="history-quota-table">
+            <div class="quota-title">Model usage left</div>
+            <div id="quotaRows" class="quota-rows">
+              <!-- Quota rows will be populated here -->
+            </div>
+          </div>
+          <div class="header-top">
+            <h2>Recent Sessions</h2>
+            <button id="historyNewChatButton" type="button" class="primary-btn">
+              <span>+ New Chat</span>
+            </button>
+          </div>
+        </div>
+        <div id="historyListFull" class="history-list">
+          <!-- Sessions will be populated here -->
         </div>
       </div>
       <div class="terminal-container">

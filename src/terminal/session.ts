@@ -64,7 +64,7 @@ export class GeminiTerminalSession {
   private handleWebviewMessage(message: WebviewToExtensionMessage) {
     switch (message.type) {
       case "ready":
-        void this.startWithLatestSession();
+        void this.initializeSession();
         break;
       case "input":
         if (this.terminalProcess) {
@@ -264,59 +264,207 @@ export class GeminiTerminalSession {
     void vscode.window.showInformationMessage(`Injected ${uniqueFiles.length} new file(s) into Gemini CLI.`);
   }
 
-  private async startWithLatestSession() {
-    const options = this.getPtyOptions();
-    const command = process.platform === "win32" ? "gemini --list-sessions" : "bash -lc 'gemini --list-sessions'";
+  private async initializeSession() {
+    // 1. Show history list
+    void this.showSessionPicker();
     
-    cp.exec(command, { cwd: options.cwd, env: options.env }, (error, stdout) => {
-      let latestId: string | undefined;
-      
-      const processOutput = (output: string) => {
-        const lines = output.split("\n");
-        const regex = /\[([a-fA-F0-9-]+)\]\s*$/;
-        // Sessions are usually listed in order, newest at the end
-        for (let i = lines.length - 1; i >= 0; i--) {
-          const match = lines[i].trim().match(regex);
-          if (match) {
-            latestId = match[1];
-            break;
-          }
-        }
-        this.startTerminalProcess(latestId || true);
-      };
+    // 2. Start a NEW session in background
+    // We pass false to getShellLaunchCommand to start a fresh session
+    this.startTerminalProcess(false);
 
-      if (error) {
-        const npxCommand = process.platform === "win32" ? "npx -y @google/gemini-cli --list-sessions" : "bash -lc 'npx -y @google/gemini-cli --list-sessions'";
-        cp.exec(npxCommand, { cwd: options.cwd, env: options.env }, (npxError, npxStdout) => {
-          processOutput(npxStdout || "");
-        });
-        return;
-      }
-      processOutput(stdout);
-    });
+    // 3. Pre-fetch quota so it's ready when user clicks Models
+    void this.fetchQuota();
   }
 
-  private async showSessionPicker() {
-    const options = this.getPtyOptions();
+  private formatTime(date: Date): string {
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+    if (diffInSeconds < 60) return "just now";
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+    if (diffInSeconds < 172800) return "yesterday";
+    if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d ago`;
     
-    // Run gemini --list-sessions
-    const command = process.platform === "win32" ? "gemini --list-sessions" : "bash -lc 'gemini --list-sessions'";
-    
-    cp.exec(command, { cwd: options.cwd, env: options.env }, async (error, stdout) => {
-      if (error) {
-        // Try npx fallback
-        const npxCommand = process.platform === "win32" ? "npx -y @google/gemini-cli --list-sessions" : "bash -lc 'npx -y @google/gemini-cli --list-sessions'";
-        cp.exec(npxCommand, { cwd: options.cwd, env: options.env }, async (npxError, npxStdout) => {
-          if (npxError) {
-            void vscode.window.showErrorMessage(`Failed to list sessions: ${formatError(npxError)}`);
-            return;
+    return date.toLocaleDateString();
+  }
+
+  private async showSessionPicker(query?: string) {
+    try {
+      const geminiHome = process.env["GEMINI_CLI_HOME"] || path.join(os.homedir(), ".gemini");
+      const projectsFile = path.join(geminiHome, "projects.json");
+      
+      // 1. Determine Project ID
+      let projectId = "tool"; // Default fallback
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      
+      if (fs.existsSync(projectsFile) && workspaceFolder) {
+        try {
+          const projectsData = JSON.parse(fs.readFileSync(projectsFile, "utf8"));
+          const normalizedWorkspace = path.normalize(workspaceFolder);
+          
+          if (projectsData.projects?.[normalizedWorkspace]) {
+            projectId = projectsData.projects[normalizedWorkspace];
+          } else {
+            const sortedPaths = Object.keys(projectsData.projects).sort((a, b) => b.length - a.length);
+            for (const pPath of sortedPaths) {
+              const normalizedPPath = path.normalize(pPath);
+              if (normalizedWorkspace === normalizedPPath || normalizedWorkspace.startsWith(normalizedPPath + path.sep)) {
+                projectId = projectsData.projects[pPath];
+                break;
+              }
+            }
           }
-          this.processSessionList(npxStdout);
-        });
+        } catch (e) { 
+           // ignore
+        }
+      }
+
+      const chatsDir = path.join(geminiHome, "tmp", projectId, "chats");
+
+      if (!fs.existsSync(chatsDir)) {
+        void this.webview.postMessage({ type: "sessionsList", sessions: [] });
         return;
       }
-      this.processSessionList(stdout);
-    });
+
+      // 2. Find all .json and .jsonl files recursively
+      const getAllChatFiles = (dir: string): string[] => {
+        let results: string[] = [];
+        try {
+          const list = fs.readdirSync(dir);
+          for (const file of list) {
+            const filePath = path.join(dir, file);
+            const stat = fs.statSync(filePath);
+            if (stat && stat.isDirectory()) {
+              results = results.concat(getAllChatFiles(filePath));
+            } else if (file.endsWith(".jsonl") || file.endsWith(".json")) {
+              results.push(filePath);
+            }
+          }
+        } catch (e) {}
+        return results;
+      };
+
+      const files = getAllChatFiles(chatsDir);
+      
+      const sessionsMap = new Map<string, { label: string; description: string; id: string; mtime: number }>();
+
+      for (const filePath of files) {
+        try {
+          const content = fs.readFileSync(filePath, "utf8");
+          let sessionId: string | undefined;
+          let startTime: string | undefined;
+          let kind: string | undefined;
+          let label = "New Session";
+          let fullSearchText = content.toLowerCase();
+
+          const extractLabel = (item: any) => {
+            if (!item) return null;
+            if (typeof item === "string") return item;
+            if (Array.isArray(item)) {
+              return item.map(p => p.text || "").join("").trim();
+            }
+            if (item.text) return item.text;
+            return null;
+          };
+
+          let lastActivityTime: number = 0;
+
+          if (filePath.endsWith(".jsonl")) {
+            const lines = content.split("\n").filter(l => l.trim().length > 0);
+            let summaryField: string | undefined;
+            let firstUserText: string | undefined;
+
+            for (const line of lines) {
+              const trimmedLine = line.trim();
+              try {
+                const entry = JSON.parse(trimmedLine);
+                if (entry.sessionId) {
+                  sessionId = entry.sessionId;
+                  startTime = entry.startTime;
+                  kind = entry.kind;
+                  if (entry.summary) summaryField = entry.summary;
+                  if (entry.lastUpdated) {
+                    const t = new Date(entry.lastUpdated).getTime();
+                    if (t > lastActivityTime) lastActivityTime = t;
+                  }
+                }
+                
+                if (entry.timestamp) {
+                  const t = new Date(entry.timestamp).getTime();
+                  if (t > lastActivityTime) lastActivityTime = t;
+                }
+
+                if (entry.type === "user" && !firstUserText) {
+                  firstUserText = extractLabel(entry.content);
+                }
+              } catch (e) {}
+            }
+            label = summaryField || firstUserText || "New Session";
+          } else {
+            // Standard JSON
+            try {
+              const data = JSON.parse(content);
+              sessionId = data.sessionId;
+              startTime = data.startTime;
+              kind = data.kind || "main";
+              
+              if (data.lastUpdated) {
+                lastActivityTime = new Date(data.lastUpdated).getTime();
+              }
+              
+              // Also check last message timestamp
+              if (data.messages && data.messages.length > 0) {
+                const lastMsg = data.messages[data.messages.length - 1];
+                if (lastMsg.timestamp) {
+                  const t = new Date(lastMsg.timestamp).getTime();
+                  if (t > lastActivityTime) lastActivityTime = t;
+                }
+              }
+
+              const summaryField = data.summary;
+              const firstUserMsg = data.messages?.find((m: any) => m.type === "user");
+              const firstUserText = firstUserMsg ? extractLabel(firstUserMsg.content) : undefined;
+              
+              label = summaryField || firstUserText || "New Session";
+            } catch (e) {}
+          }
+
+          if (label && label.length > 80) label = label.substring(0, 77) + "...";
+
+          if (!sessionId || kind === "subagent") continue;
+
+          if (query && !fullSearchText.includes(query.toLowerCase())) {
+            continue;
+          }
+
+          // Fallback to filesystem mtime if no internal timestamps found
+          if (lastActivityTime === 0) {
+            lastActivityTime = fs.statSync(filePath).mtime.getTime();
+          }
+
+          // De-duplicate: only keep the version with the newest activity
+          const existing = sessionsMap.get(sessionId);
+          if (!existing || lastActivityTime > existing.mtime) {
+            sessionsMap.set(sessionId, {
+              label,
+              description: this.formatTime(new Date(lastActivityTime)),
+              id: sessionId,
+              mtime: lastActivityTime
+            });
+          }
+        } catch (e) { /* skip */ }
+      }
+
+      const sessions = Array.from(sessionsMap.values());
+      // Sort by newest first
+      sessions.sort((a, b) => b.mtime - a.mtime);
+
+      void this.webview.postMessage({ type: "sessionsList", sessions });
+
+    } catch (error) {
+      void this.webview.postMessage({ type: "sessionsList", sessions: [] });
+    }
   }
 
   private processSessionList(output: string) {

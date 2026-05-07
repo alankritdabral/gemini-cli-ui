@@ -14,6 +14,12 @@
   const moreQuotaButton = document.getElementById("moreQuotaButton");
   const moreNewChatButton = document.getElementById("moreNewChatButton");
 
+  const historyView = document.getElementById("historyView");
+  const historyListDropdown = document.getElementById("historyListDropdown");
+  const historyListFull = document.getElementById("historyListFull");
+  const historyNewChatButton = document.getElementById("historyNewChatButton");
+  const quotaRows = document.getElementById("quotaRows");
+
   const suggestionControls = document.getElementById("suggestionControls");
   const suggestionUp = document.getElementById("suggestionUp");
   const suggestionDown = document.getElementById("suggestionDown");
@@ -32,6 +38,9 @@
   const moreAddFile = document.getElementById("moreAddFile");
   const moreModels = document.getElementById("moreModels");
   const morePermissions = document.getElementById("morePermissions");
+
+  let isFirstLoad = true;
+  document.body.classList.add("first-startup");
 
   const modelList = [
     { id: "auto-gemini-3", name: "Auto (Gemini 3)", oneliner: "Best of Gemini 3", summary: "Smart routing between Pro and Flash models for Gemini 3." },
@@ -617,7 +626,9 @@
 
   // Force focus to terminal when window gains focus
   window.addEventListener("focus", () => {
-    setTimeout(() => terminal.focus(), 0);
+    if (!document.body.classList.contains("history-mode")) {
+      setTimeout(() => terminal.focus(), 0);
+    }
   });
 
   // Handle paste events explicitly in the webview.
@@ -662,7 +673,23 @@
     }, ACTION_COOLDOWN_MS);
   }
 
+  function showTerminal() {
+    document.body.classList.remove("history-mode");
+    document.body.classList.remove("first-startup");
+    setTimeout(() => {
+      fitToContainer();
+      terminal.focus();
+    }, 100);
+  }
+
+  function showHistory() {
+    document.body.classList.add("history-mode");
+    showHistorySkeleton();
+    vscode.postMessage({ type: "listSessions" });
+  }
+
   newChatButton.addEventListener("click", () => {
+    showTerminal();
     // Send /clear command to terminal
     vscode.postMessage({ type: "input", data: "/clear" });
     
@@ -672,15 +699,18 @@
     }, 100);
   });
 
+  historyNewChatButton.addEventListener("click", () => {
+    showTerminal();
+  });
+
   browserButton.addEventListener("click", () => {
     vscode.postMessage({ type: "browser_switch" });
   });
 
   historyButton.addEventListener("click", (event) => {
-    if (isBusy || cooldownActive) return;
+    // We allow history even if busy to browse during startup
     const isShowing = historyDropdown.classList.contains("show");
     if (!isShowing) {
-      setLoading(true);
       showHistorySkeleton();
       vscode.postMessage({ type: "listSessions" });
     }
@@ -733,7 +763,9 @@
         if (isBusy || statusText.textContent.includes("exited")) {
           setLoading(false);
           setStatus("Gemini CLI");
-          terminal.focus();
+          if (!document.body.classList.contains("history-mode")) {
+            terminal.focus();
+          }
         }
         terminal.write(message.data);
         
@@ -743,11 +775,17 @@
       case "clear":
         terminal.reset();
         terminal.write("\x1bc"); // Hard reset ANSI sequence
-        terminal.focus();
+        if (!document.body.classList.contains("history-mode")) {
+          terminal.focus();
+        }
         break;
       case "sessionsList":
         setLoading(false);
-        populateHistoryDropdown(message.sessions);
+        populateHistory(message.sessions);
+        if (isFirstLoad) {
+          isFirstLoad = false;
+          document.body.classList.add("history-mode");
+        }
         break;
       case "quotaUpdate":
         modelList.forEach(m => m.isFetching = false);
@@ -765,26 +803,120 @@
                   (bId.includes("flash") && !bId.includes("lite") && mId.includes("flash") && !mId.includes("lite")) ||
                   (bId.includes("lite") && mId.includes("lite"))) {
                 model.percentage = usedPercentage;
+                model.remainingFraction = bucket.remainingFraction;
+                model.resetTime = bucket.resetTime; // Store reset time if available
               }
             });
           });
         }
         populateModelsMenu();
+        populateHistoryQuotas();
         break;
       case "exit":
         setLoading(false);
         setStatus(`Gemini CLI exited (${formatExit(message)})`);
         break;
       case "focus":
-        terminal.focus();
+        if (!document.body.classList.contains("history-mode")) {
+          terminal.focus();
+        }
         break;
     }
   });
 
+  function populateHistory(sessions) {
+    populateHistoryDropdown(sessions);
+    populateHistoryFull(sessions);
+  }
+
+  function populateHistoryQuotas() {
+    quotaRows.innerHTML = "";
+    
+    // We only want to show exactly 3 tiers: Pro, Flash, Flash Lite
+    const uniqueTiers = new Map();
+    
+    modelList.forEach(m => {
+      if (m.remainingFraction === undefined) return;
+      const name = m.name.toLowerCase();
+      let tier = null;
+      if (name.includes("pro")) tier = "Pro";
+      else if (name.includes("lite")) tier = "Flash Lite";
+      else if (name.includes("flash")) tier = "Flash";
+      
+      if (tier && !uniqueTiers.has(tier)) {
+        uniqueTiers.set(tier, {
+          name: tier,
+          remainingFraction: m.remainingFraction,
+          resetTime: m.resetTime
+        });
+      }
+    });
+
+    const activeQuotas = Array.from(uniqueTiers.values());
+    
+    if (activeQuotas.length === 0) {
+      document.getElementById("historyQuotas").style.display = "none";
+      return;
+    }
+    document.getElementById("historyQuotas").style.display = "block";
+
+    // Custom sorting: Flash, Flash Lite, Pro
+    activeQuotas.sort((a, b) => {
+      const order = { "Flash": 1, "Flash Lite": 2, "Pro": 3 };
+      return (order[a.name] || 99) - (order[b.name] || 99);
+    });
+
+    activeQuotas.forEach(model => {
+      const remaining = Math.round(model.remainingFraction * 100);
+      const row = document.createElement("div");
+      row.className = "quota-row";
+      
+      let statusClass = "";
+      if (remaining <= 10) statusClass = "low";
+      else if (remaining <= 30) statusClass = "medium";
+
+      let shortName = model.name;
+
+      const resetText = formatResetTime(model.resetTime); 
+      const barChars = "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬";
+      
+      row.innerHTML = `
+        <span class="model-name">${shortName}</span>
+        <div class="bar-container">
+          <div class="bar-background">${barChars}</div>
+          <div class="bar-fill-container ${statusClass}" style="width: ${remaining}%">
+            <div class="bar-fill">${barChars}</div>
+          </div>
+        </div>
+        <span class="percentage">${remaining}%</span>
+        <span class="reset-info">${resetText}</span>
+      `;
+      quotaRows.appendChild(row);
+    });
+  }
+
+  function formatResetTime(resetTimeStr) {
+    if (!resetTimeStr) return "Resets: ~24h";
+    try {
+      const resetDate = new Date(resetTimeStr);
+      const now = new Date();
+      const diffMs = resetDate.getTime() - now.getTime();
+      if (diffMs <= 0) return "Resets: soon";
+      
+      const timeStr = resetDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      const hours = Math.floor(diffMs / 3600000);
+      const minutes = Math.floor((diffMs % 3600000) / 60000);
+      
+      return `Resets: ${timeStr} (${hours}h ${minutes}m)`;
+    } catch (e) {
+      return "Resets: ~24h";
+    }
+  }
+
   function populateHistoryDropdown(sessions) {
-    historyDropdown.innerHTML = "";
+    historyListDropdown.innerHTML = "";
     if (!sessions || sessions.length === 0) {
-      historyDropdown.innerHTML = '<div class="info-message">No history found.</div>';
+      historyListDropdown.innerHTML = '<div class="info-message">No history found.</div>';
       return;
     }
 
@@ -796,11 +928,12 @@
         <span class="session-desc">${session.description}</span>
       `;
       btn.addEventListener("click", () => {
-        if (isBusy || cooldownActive) return;
+        if (cooldownActive) return;
         
         setLoading(true);
         cooldownActive = true;
         setStatus("Resuming Session...");
+        showTerminal();
         vscode.postMessage({ type: "resumeSession", id: session.id });
         historyDropdown.classList.remove("show");
 
@@ -808,12 +941,44 @@
           cooldownActive = false;
         }, ACTION_COOLDOWN_MS);
       });
-      historyDropdown.appendChild(btn);
+      historyListDropdown.appendChild(btn);
+    });
+  }
+
+  function populateHistoryFull(sessions) {
+    historyListFull.innerHTML = "";
+    if (!sessions || sessions.length === 0) {
+      historyListFull.innerHTML = '<div class="info-message">No sessions available. Start a new chat!</div>';
+      return;
+    }
+
+    sessions.forEach((session) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.innerHTML = `
+        <span class="session-label">${session.label}</span>
+        <span class="session-desc">${session.description}</span>
+      `;
+      btn.addEventListener("click", () => {
+        if (cooldownActive) return;
+        
+        setLoading(true);
+        cooldownActive = true;
+        setStatus("Resuming Session...");
+        showTerminal();
+        vscode.postMessage({ type: "resumeSession", id: session.id });
+
+        setTimeout(() => {
+          cooldownActive = false;
+        }, ACTION_COOLDOWN_MS);
+      });
+      historyListFull.appendChild(btn);
     });
   }
 
   function showHistorySkeleton() {
-    historyDropdown.innerHTML = "";
+    historyListDropdown.innerHTML = "";
+    historyListFull.innerHTML = "";
     for (let i = 0; i < 4; i++) {
       const item = document.createElement("div");
       item.className = "skeleton-item";
@@ -821,7 +986,9 @@
         <div class="skeleton-line label"></div>
         <div class="skeleton-line desc"></div>
       `;
-      historyDropdown.appendChild(item);
+      const itemClone = item.cloneNode(true);
+      historyListDropdown.appendChild(item);
+      historyListFull.appendChild(itemClone);
     }
   }
 
@@ -869,8 +1036,10 @@
       statusContainer.classList.remove("loading");
       // Ensure terminal is focused when an operation completes
       setTimeout(() => {
-        terminal.focus();
-        updateSuggestionControls();
+        if (!document.body.classList.contains("history-mode")) {
+          terminal.focus();
+          updateSuggestionControls();
+        }
       }, 0);
     }
   }
