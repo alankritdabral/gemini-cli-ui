@@ -17,7 +17,8 @@ export type WebviewToExtensionMessage =
   | { type: "browser_back" }
   | { type: "browser_forward" }
   | { type: "browser_toggle_playwright"; enabled: boolean }
-  | { type: "browser_element_selected"; context: string; url?: string };
+  | { type: "browser_element_selected"; context: string; url?: string }
+  | { type: "fetchQuota" };
 
 export type ExtensionToBrowserMessage =
   | { type: "browser_load"; url: string }

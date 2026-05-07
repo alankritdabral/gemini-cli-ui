@@ -11,6 +11,7 @@
   const moreActionsDropdown = document.getElementById("moreActionsDropdown");
   const moreHistoryButton = document.getElementById("moreHistoryButton");
   const moreBrowserButton = document.getElementById("moreBrowserButton");
+  const moreQuotaButton = document.getElementById("moreQuotaButton");
   const moreNewChatButton = document.getElementById("moreNewChatButton");
 
   const suggestionControls = document.getElementById("suggestionControls");
@@ -48,8 +49,26 @@
     modelList.forEach(model => {
       const btn = document.createElement("button");
       btn.type = "button";
+      
+      let quotaColor = "#3fb950"; // Green
+      if (model.percentage >= 90) {
+        quotaColor = "#f85149"; // Red
+      } else if (model.percentage >= 70) {
+        quotaColor = "#d29922"; // Yellow
+      }
+
+      let percentageDisplay = "";
+      if (model.percentage !== undefined) {
+        percentageDisplay = `<span class="model-quota" style="color: ${quotaColor}; background: ${quotaColor}1A">${model.percentage}% used</span>`;
+      } else if (model.isFetching) {
+        percentageDisplay = `<span class="model-quota" style="color: #8b949e; background: rgba(139, 148, 158, 0.1)">Fetching...</span>`;
+      }
+
       btn.innerHTML = `
-        <span class="model-name">${model.name}</span>
+        <div class="model-header">
+          <span class="model-name">${model.name}</span>
+          ${percentageDisplay}
+        </div>
         <span class="model-oneliner">${model.oneliner}</span>
         <span class="model-summary">${model.summary}</span>
       `;
@@ -184,6 +203,9 @@
           return false;
         case "b":
           browserButton.click();
+          return false;
+        case "q":
+          vscode.postMessage({ type: "input", data: "/model\n" });
           return false;
       }
     }
@@ -395,6 +417,16 @@
   // Models button handler
   modelsBtn.addEventListener("click", (e) => {
     modelsMenu.classList.toggle("show");
+    if (modelsMenu.classList.contains("show")) {
+      // Show "Fetching..." for all models that don't have a percentage yet
+      modelList.forEach(m => {
+        if (m.percentage === undefined) {
+          m.isFetching = true;
+        }
+      });
+      populateModelsMenu();
+      vscode.postMessage({ type: "fetchQuota" });
+    }
     e.stopPropagation();
   });
 
@@ -422,6 +454,7 @@
     footerMoreMenu.classList.remove("show");
     setTimeout(() => {
       modelsMenu.classList.add("show");
+      vscode.postMessage({ type: "fetchQuota" });
     }, 50);
     e.stopPropagation();
   });
@@ -670,6 +703,12 @@
     moreActionsDropdown.classList.remove("show");
   });
 
+  moreQuotaButton.addEventListener("click", () => {
+    if (isBusy) return;
+    vscode.postMessage({ type: "input", data: "/model\n" });
+    moreActionsDropdown.classList.remove("show");
+  });
+
   moreNewChatButton.addEventListener("click", () => {
     newChatButton.click();
     moreActionsDropdown.classList.remove("show");
@@ -709,6 +748,28 @@
       case "sessionsList":
         setLoading(false);
         populateHistoryDropdown(message.sessions);
+        break;
+      case "quotaUpdate":
+        modelList.forEach(m => m.isFetching = false);
+        if (message.buckets) {
+          message.buckets.forEach(bucket => {
+            const usedPercentage = Math.round((1 - bucket.remainingFraction) * 100);
+            
+            modelList.forEach(model => {
+              const mId = model.id.toLowerCase();
+              const bId = bucket.modelId.toLowerCase();
+
+              // Exact match or tier match
+              if (mId === bId || 
+                  (bId.includes("pro") && mId.includes("pro")) ||
+                  (bId.includes("flash") && !bId.includes("lite") && mId.includes("flash") && !mId.includes("lite")) ||
+                  (bId.includes("lite") && mId.includes("lite"))) {
+                model.percentage = usedPercentage;
+              }
+            });
+          });
+        }
+        populateModelsMenu();
         break;
       case "exit":
         setLoading(false);

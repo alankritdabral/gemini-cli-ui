@@ -103,6 +103,9 @@ export class GeminiTerminalSession {
       case "browser_switch":
         void vscode.commands.executeCommand("gemini.browser.open");
         break;
+      case "fetchQuota":
+        void this.fetchQuota();
+        break;
     }
   }
 
@@ -117,6 +120,115 @@ export class GeminiTerminalSession {
     if (files && files.length > 0) {
       this.injectFiles(files.map(f => ({ path: f.fsPath, name: path.basename(f.fsPath) })));
     }
+  }
+
+  private async fetchQuota() {
+    let accessToken: string | undefined;
+    let projectId = "tool";
+
+    try {
+      const geminiHome = process.env["GEMINI_CLI_HOME"] || path.join(os.homedir(), ".gemini");
+      const credsReq = path.join(geminiHome, "oauth_creds.json");
+      const projectsReq = path.join(geminiHome, "projects.json");
+
+      if (!fs.existsSync(credsReq)) {
+        void this.webview.postMessage({ type: "output", data: `\r\n\x1b[33mQuota unavailable: No credentials found. Run 'gemini login' in terminal.\x1b[0m\r\n` });
+        return;
+      }
+
+      const creds = JSON.parse(fs.readFileSync(credsReq, "utf8"));
+      accessToken = creds.access_token;
+      if (!accessToken) {
+        void this.webview.postMessage({ type: "output", data: `\r\n\x1b[33mQuota unavailable: Access token missing. Run 'gemini login' again.\x1b[0m\r\n` });
+        return;
+      }
+
+      if (fs.existsSync(projectsReq)) {
+        try {
+          const projectsData = JSON.parse(fs.readFileSync(projectsReq, "utf8"));
+          const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+          if (workspaceFolder && projectsData.projects?.[workspaceFolder]) {
+            projectId = projectsData.projects[workspaceFolder];
+          }
+        } catch (e) { /* ignore */ }
+      }
+
+      // Try direct fetch with a short timeout (3s)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+      try {
+        const response = await fetch("https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${accessToken}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ project: projectId }),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          const data = await response.json() as any;
+          void this.webview.postMessage({ type: "quotaUpdate", buckets: data.buckets });
+          return;
+        }
+      } catch (e) {
+        clearTimeout(timeoutId);
+        // Fall through to shell fallback
+      }
+
+      // If direct fetch fails or times out, use shell fallback
+      void this.fetchQuotaViaShell(accessToken, projectId);
+    } catch (error) {
+      void this.webview.postMessage({ type: "output", data: `\r\n\x1b[31mQuota fetch error: ${formatError(error)}\x1b[0m\r\n` });
+    }
+  }
+
+  private async fetchQuotaViaShell(token: string, projectId: string) {
+    const isWindows = process.platform === "win32";
+    const url = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota";
+    const payload = JSON.stringify({ project: projectId });
+    const ptyOptions = this.getPtyOptions();
+
+    // Strategy 1: Fast shell (uses the environment we already have for the PTY)
+    // We add -4 to curl to avoid IPv6 resolution delays
+    const fastCommand = isWindows
+      ? `powershell.exe -NoProfile -Command "Invoke-RestMethod -Uri '${url}' -Method Post -Headers @{ Authorization = 'Bearer ${token}'; 'Content-Type' = 'application/json' } -Body '${payload.replace(/'/g, "''")}' | ConvertTo-Json -Compress"`
+      : `curl -s -4 -X POST -H 'Authorization: Bearer ${token}' -H 'Content-Type: application/json' -d '${payload}' ${url}`;
+
+    cp.exec(fastCommand, { env: ptyOptions.env, cwd: ptyOptions.cwd }, (error, stdout) => {
+      if (!error) {
+        try {
+          const data = JSON.parse(stdout);
+          if (data.buckets) {
+            void this.webview.postMessage({ type: "quotaUpdate", buckets: data.buckets });
+            return;
+          }
+        } catch (e) { /* ignore and try slow fallback */ }
+      }
+
+      // Strategy 2: Slow fallback (login shell) - only if fast shell fails
+      if (!isWindows) {
+        const slowCommand = `bash -lc "curl -s -4 -X POST -H 'Authorization: Bearer ${token}' -H 'Content-Type: application/json' -d '${payload}' ${url}"`;
+        cp.exec(slowCommand, (slowError, slowStdout, slowStderr) => {
+          if (slowError) {
+            void this.webview.postMessage({ 
+              type: "output", 
+              data: `\r\n\x1b[31mQuota fetch failed.\r\n\x1b[33mError: ${slowStderr || slowError.message}\x1b[0m\r\n` 
+            });
+            return;
+          }
+          try {
+            const data = JSON.parse(slowStdout);
+            void this.webview.postMessage({ type: "quotaUpdate", buckets: data.buckets });
+          } catch (e) {
+            void this.webview.postMessage({ type: "output", data: `\r\n\x1b[31mQuota response invalid\x1b[0m\r\n` });
+          }
+        });
+      }
+    });
   }
 
   private injectFiles(files: { path: string; name: string }[]) {

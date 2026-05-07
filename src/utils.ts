@@ -11,6 +11,10 @@ export function getNonce() {
 
 export function formatError(error: unknown): string {
   if (error instanceof Error) {
+    if ((error as any).cause) {
+      const cause = (error as any).cause;
+      return `${error.message} (Cause: ${cause instanceof Error ? cause.message : String(cause)})`;
+    }
     return error.message;
   }
 
