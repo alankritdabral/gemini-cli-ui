@@ -11,7 +11,6 @@
   const moreActionsDropdown = document.getElementById("moreActionsDropdown");
   const moreHistoryButton = document.getElementById("moreHistoryButton");
   const moreBrowserButton = document.getElementById("moreBrowserButton");
-  const moreQuotaButton = document.getElementById("moreQuotaButton");
   const moreNewChatButton = document.getElementById("moreNewChatButton");
 
   const historyView = document.getElementById("historyView");
@@ -723,19 +722,14 @@
     event.stopPropagation();
   });
 
-  moreHistoryButton.addEventListener("click", () => {
+  moreHistoryButton.addEventListener("click", (event) => {
     historyButton.click();
     moreActionsDropdown.classList.remove("show");
+    event.stopPropagation();
   });
 
   moreBrowserButton.addEventListener("click", () => {
     browserButton.click();
-    moreActionsDropdown.classList.remove("show");
-  });
-
-  moreQuotaButton.addEventListener("click", () => {
-    if (isBusy) return;
-    vscode.postMessage({ type: "input", data: "/model\n" });
     moreActionsDropdown.classList.remove("show");
   });
 

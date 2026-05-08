@@ -1,8 +1,12 @@
 import * as vscode from "vscode";
 import { GeminiChatViewProvider } from "./views/chatView";
 import { GeminiBrowserPanel } from "./views/browserPanel";
+import { syncExtensionAgents } from "./utils";
 
 export function activate(context: vscode.ExtensionContext) {
+  // Sync bundled agents to global .gemini directory
+  void syncExtensionAgents(context);
+
   const chatProvider = new GeminiChatViewProvider(context.extensionUri);
 
   context.subscriptions.push(
